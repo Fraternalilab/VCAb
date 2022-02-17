@@ -4,6 +4,7 @@ library (rBLAST)
 library (taxonomizr)
 library (NGLVieweR)
 library (tibble)
+library (shinyhelper)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="new_vcab.csv"
@@ -20,8 +21,11 @@ all_ref_bl <- "./seq_db/ref_db/all_ref_db/all_ref.fasta"
 # ref_db containing all the reference sequences
 
 # Blast db:
-#VCAb_fseq_bl <- "~/Desktop/antibody/VCAb_full_seq_db/all_full_seq_HL.fasta"
+VCAb_fseq_bl <- "./seq_db/vcab_db/HL_mixed_db/all_full_seq.fasta"
 # all the full sequence from both H and L chains
+VCAb_vseq_bl <- "./seq_db/vcab_db/HL_mixed_db/all_v_seq.fasta"
+# all the V region sequence from both H and L chains
+
 VCAbH_bl <- "./seq_db/vcab_db/H_full_db/H_full_seq.fasta"
 # all H_full_seq in VCAb
 VCAbL_bl <- "./seq_db/vcab_db/L_full_db/L_full_seq.fasta" 
@@ -41,7 +45,7 @@ vcab=o_vcab #[,c(32,2:4,18,19,41,37:39,6:16,33:36)]
 vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 
 
-
+####################### Functions #######################
 # Generate blast table: return the best blast result (order: highest iden, alignment_length)
 generate_blast_result <- function(o_seq,db_dir,suffix=""){
   str_seq <- as.character(o_seq)
@@ -49,40 +53,52 @@ generate_blast_result <- function(o_seq,db_dir,suffix=""){
     return (NULL)
   }
   else {
-    db <- blast(db=db_dir,type="blastp")
-    aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
-    seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
+    withProgress(message="BLASTing...",value=0,{
+      db <- blast(db=db_dir,type="blastp")
+      aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
+      seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
+      
+      ## Don't need this step: the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
+      # Rank seq_pred
+      #seq_pred <- seq_pred[order(seq_pred$E,seq_pred$Perc.Ident,decreasing=TRUE),]
+      blast_df <- seq_pred[,2:12]
+      
+      # generate the column of "iden_code"
+      split_id <- function(i,sep){
+        strsplit(i,sep)[[1]][1]
+      }
+      colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
+      blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
+      return (blast_df)
+    })
     
-    ## Don't need this step: the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
-    # Rank seq_pred
-    #seq_pred <- seq_pred[order(seq_pred$E,seq_pred$Perc.Ident,decreasing=TRUE),]
-    blast_df <- seq_pred[,2:12]
-    
-    # generate the column of "iden_code"
-    split_id <- function(i,sep){
-      strsplit(i,sep)[[1]][1]
-    }
-    colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
-    blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
-    return (blast_df)
   }
 } # return the dataframe of the complete result of the blast
 
-blast_vh_vl <- function (ab_title,vhseq,vlseq){
-  # ab_title would be the value of QueryID
-  H_df <- generate_blast_result(vhseq,HV_bl,".H")
-  L_df <- generate_blast_result(vlseq,LV_bl,".L")
+blast_paired_chains <- function (ab_title,hseq,lseq,region){
+  # Generate the blast result only (doesn't extract VCAb information) of the paired H&L chain
+  
+  # region is the region selected by the user, in order to choose the specific bl_db
+  # ab_title would be the value of QueryID, when multiple seqs in fasta file is inputted
+  # ab_title would be empty in "manual" mode. i.e. only one H/L pair is inputted.
+  
+  H_bl <- ifelse(region=="v_region", HV_bl, VCAbH_bl)
+  L_bl <- ifelse(region=="v_region", LV_bl, VCAbL_bl)
+  
+  H_df <- generate_blast_result(hseq,H_bl,".H")
+  L_df <- generate_blast_result(lseq,L_bl,".L")
   # Merge the result of VH blast with VL blast:
   # if both not empty, merge; else, return the one that is not empty
   t_df <- if (is.null(H_df)) L_df else if (is.null(L_df)) H_df else merge(H_df,L_df,by="iden_code",suffixes=c(".H",".L"))
   
+  # Add the avg_ident to the merged table
   t_df <- within(t_df,avg_ident <- if (is.null(H_df)) Perc.Ident.L else if (is.null(L_df)) Perc.Ident.H else (Perc.Ident.H+Perc.Ident.L)/2)
-  t_df <- t_df[with(t_df,order(avg_ident,decreasing=TRUE)),]
+  t_df <- t_df[with(t_df,order(avg_ident,decreasing=TRUE)),] # sort the table based on avg_ident
   
   rownames(t_df) <- NULL # reset the row index of df
   
   if (ab_title==""){
-    t_df <- t_df[,!(names(t_df) %in% c("avg_ident"))]
+    t_df <- t_df[,!(names(t_df) %in% c("avg_ident"))] # The column "avg_ident" would not be displayed
     return (t_df)
   }
   else{
@@ -97,49 +113,6 @@ blast_vh_vl <- function (ab_title,vhseq,vlseq){
     return (t_df)
   }
   
-}
-
-# Extract the entry with the same iden_code in the best-fit blast result
-extract_entry <- function(title,df){
-  name <- strsplit(title,"-")[[1]][1]
-  return (df %>% dplyr::filter(iden_code==name))
-}
-
-# From https://community.rstudio.com/t/how-to-use-shiny-action-button-in-datatable-through-shiny-module/39998
-shinyInput <- function(FUN, len, id, ns, ...) {
-  inputs <- character(len)
-  for (i in seq_len(len)) {
-    inputs[i] <- as.character(FUN(paste0(id, i), ...))
-  }
-  inputs
-}
-
-# Add "show" button in every entry of the table
-addShow <- function(df,ns){
-  Actions = shinyInput(actionButton,nrow(df),'button_',
-                       label = "Show",
-                       style="color: #fff; background-color: #337ab7; border-color: #2e6da4",
-                       onclick = paste0('Shiny.onInputChange(\"' , ns("select_button"), '\", this.id)'))
-  #return (cbind(Structure=Actions,df))
-  return (add_column(df, Structure=Actions, .after="iden_code"))
-}
-
-# Generate the total_info table containing both ab_info and blast result
-generate_total_info <- function(bl_df,ns){
-  # Get the ab_info of all the entries in the blast table
-  ab_names <- bl_df$iden_code
-  ab_info_lst <- lapply(ab_names,extract_entry,df=vcab)
-  ab_info_df <- as.data.frame(do.call(rbind,ab_info_lst))
-  
-  final_ab_info_df <- addShow(ab_info_df,ns)
-  
-  # drop the columns of iden_code in the bl_df
-  bl_df <- bl_df[!(names(bl_df) %in% c("iden_code"))]
-  
-  # Merge the blast_df with ab_info_df: 
-  # use cbind() instead of merge to preserve the original blast order, since merge() would be order the df by the "by" col
-  #bl_ab_df <- merge(bl_df,ab_info_df,by="iden_code")
-  bl_ab_df <- cbind(bl_df,final_ab_info_df)
 }
 
 check_uploaded_file <- function(f_path,seq_max=200){
@@ -171,15 +144,23 @@ check_uploaded_file <- function(f_path,seq_max=200){
 }
 
 # Allow the user to upload their own fasta files
-read_fasta_file_and_blast <- function(f_path){
+uploaded_file_blast_unpaired <- function(f_path,region){
   # f_path: uploaded file path; # db_dir: the directory of the database used for blast
+  # region: the region of interest selected by the user, in order to select which database would be blasted against.
+  
+  bl_db <- ifelse(region=="v_region", VCAb_vseq_bl, VCAb_fseq_bl)
   set <- readAAStringSet(f_path) # convert the file into a string set
+  
   # read each seq one by one, then blast
   result <- list()
   for (i in 1:length(set)){
     ab_title <- names(set)[i]
     ab_seq <- set[[i]] # return an AAString object
-    bl_result <- generate_blast_result(ab_seq,VCAb_fseq_bl) 
+    bl_result <- generate_blast_result(ab_seq,bl_db)
+    if (is.null(bl_result)){
+      # jump to the next for loop if the bl_result is empty
+      next
+    }
     best_match <- bl_result[1:3,] # display the top three blast result
     best_match$QueryID <- ab_title
     result <- rbind(result,best_match)
@@ -188,8 +169,7 @@ read_fasta_file_and_blast <- function(f_path){
   return (result)
 }
 
-
-find_paired_V_seqs_and_blast <- function (f_path){
+uploaded_file_blast_paired <- function (f_path,region){
   # if the number of fasta sequence is within 0-200, return the blast result of vh&vl seq, and the list of unpaired_seqs (if any).
   # f_path: should be the file path of fasta files containing V seqs
   set <- readAAStringSet(f_path)
@@ -231,7 +211,7 @@ find_paired_V_seqs_and_blast <- function (f_path){
       
       
       # blast for both HV & LV to get the match
-      bl_df <- blast_vh_vl(ab,H_seq,L_seq) # Probably can be downloaded by user?
+      bl_df <- blast_paired_chains(ab,H_seq,L_seq,region)
       
       bl_result <- rbind(bl_result,bl_df[1:3,]) # only attach the top 3 entries to bl_result
       
@@ -244,6 +224,66 @@ find_paired_V_seqs_and_blast <- function (f_path){
   
   # return bl_result of paired & df of unpaired_seqs
   return (list("paired_bl"=bl_result,"unpaired"=unpaired_seqs))
+}
+
+# Extract the entry with the same iden_code in the best-fit blast result
+extract_entry <- function(title,df){
+  name <- strsplit(title,"-")[[1]][1]
+  return (df %>% dplyr::filter(iden_code==name))
+}
+
+# Filter the table by features (attributes)
+filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,df=vcab){
+  # select the rows to be displayed
+  # return a set of TRUE/FALSE value
+  
+  # all the inputs of this function are the input: e.g. iso_txt should be in this format: input$iso_txt
+  select_filter <- function(check_col_name,select_input_value){
+    # check_col_name: the name of the column in the table to be checked / the column which serves as the filter standard
+    # o_select_input_value: the value inputted by the user, e.g. input$iso_txt
+    if(select_input_value=="All") TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
+  }
+  first_filter <- select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)
+  final_filter <- if (is.na(res_cut)) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
+  
+  return (final_filter)
+}
+
+# From https://community.rstudio.com/t/how-to-use-shiny-action-button-in-datatable-through-shiny-module/39998
+shinyInput <- function(FUN, len, id, ns, ...) {
+  inputs <- character(len)
+  for (i in seq_len(len)) {
+    inputs[i] <- as.character(FUN(paste0(id, i), ...))
+  }
+  inputs
+}
+
+# Add "show" button in every entry of the table
+addShow <- function(df,ns){
+  Actions = shinyInput(actionButton,nrow(df),'button_',
+                       label = "Show",
+                       style="color: #fff; background-color: #337ab7; border-color: #2e6da4",
+                       onclick = paste0('Shiny.onInputChange(\"' , ns("select_button"), '\", this.id)'))
+  #return (cbind(Structure=Actions,df))
+  return (add_column(df, Structure=Actions, .after="iden_code"))
+}
+
+# Generate the total_info table containing both ab_info and blast result
+generate_total_info <- function(bl_df,ns){
+  # Get the ab_info of all the entries in the blast table
+  ab_names <- bl_df$iden_code
+  ab_info_lst <- lapply(ab_names,extract_entry,df=vcab)
+  ab_info_df <- as.data.frame(do.call(rbind,ab_info_lst))
+  
+  final_ab_info_df <- addShow(ab_info_df,ns)
+  
+  # drop the columns of iden_code in the bl_df
+  bl_df <- bl_df[!(names(bl_df) %in% c("iden_code"))]
+  
+  # Merge the blast_df with ab_info_df: 
+  # use cbind() instead of merge to preserve the original blast order, since merge() would be order the df by the "by" col
+  #bl_ab_df <- merge(bl_df,ab_info_df,by="iden_code")
+  bl_ab_df <- cbind(bl_df,final_ab_info_df)
 }
 
 generate_pops_info <- function(pdb_c){
@@ -268,8 +308,14 @@ generate_pops_info <- function(pdb_c){
   return (list("hpops"=hpops,"lpops"=lpops))
 }
 
+####################### UI #######################
 ui <- fluidPage(
-  titlePanel("VCAb Antibody Structural Database"),
+  titlePanel(title=div(img(
+    src="./VCAb_logo.png",
+    width = 300, height = 100#,
+    #style = "margin 5px 5px"
+  ),
+  "V and C region bearing Antibody Database")),
   
   fluidRow(
     column(7,
@@ -281,45 +327,74 @@ ui <- fluidPage(
                                   
                          ),
                          tabPanel("Search by Attributes",
-                                  selectInput("iso_txt","Isotype:",choices=c("All",sort(unique(vcab$Htype)))),
-                                  selectInput("Ltype_txt","Light chain type:",choices=c("All",sort(unique(vcab$Ltype)))),
-                                  selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))),
-                                  selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All"),
-                                  numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) # how to allow the user to select all the ab?
+                                  selectInput("iso_txt","Isotype:",choices=c("All",sort(unique(vcab$Htype)))) %>%
+                                    helper(type="inline",title="Isotype", 
+                                           content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                           "Each isotype has different function.",
+                                           "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+        
+                                  selectInput("Ltype_txt","Light chain type:",choices=c("All",sort(unique(vcab$Ltype)))) %>%
+                                    helper(type="inline",title="Light chain type", 
+                                           content=c("There are two light chain types in human, classified by the sequence of C region on L chain.",
+                                                     "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                  selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                                    helper(type="inline", title="Structural Coverage",
+                                           content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                     "Full antibody covers both Fab and Fc region",
+                                                     "For the defination of Fab and Fc, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                  
+                                  selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                    helper(type="inline",title="Experimental Method",
+                                           content=c("The experimental method used to acquire the structure.")),
+                                  numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                    helper(type="inline",title="Resolution Threshold",
+                                           content=c("This is used to acquire structures with resolution below the threshold.",
+                                                     "The threshold can be set to value from 1 to 5.")) 
+                                  # Just empty the input to allow the user to select ab without the limit of resolution.
                                   
                          ),
                          
                          tabPanel("Sequence",
+                                  tabsetPanel(id="seq_tabs",
+                                              tabPanel("Search manually",
+                                                       textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                     value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
+                                                       
+                                                       # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                       radioButtons(inputId="seq_type", label="The type of this chain", 
+                                                                    choices=c("Heavy Chain" = "Hseq",
+                                                                              "Light Chain" = "Lseq",
+                                                                              "Don't know" = "unknown_seq")),
+                                                       checkboxInput(inputId="two_chains",label="Add another paired H/L chain",FALSE),
+                                                       
+                                                      conditionalPanel(
+                                                           condition="input.two_chains==1",
+                                                           textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                         value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
+                                                           
+                                                           # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                           radioButtons(inputId="seq_type_2", label="The type of this chain", 
+                                                                        choices=c("Heavy Chain" = "Hseq",
+                                                                                  "Light Chain" = "Lseq"))
+                                                      )
+                                                       
+                                                       
+                                                       ),
+                                              tabPanel("Search in batch",
+                                                       fileInput("upload","Upload a fasta file (200 seqs max)"),
+                                                       radioButtons(inputId="up_paired", label=" Sequences inside the uploaded file are: ",
+                                                                    choices=c(
+                                                                      "paired H and L chains" = "paired",
+                                                                      "not-paired chains" = "unpaired"
+                                                                    ))
+                                                       
+                                                       )),
                                   
-                                  textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both"),
-                                  
-                                  # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                  radioButtons(inputId="seq_type", label="The type of this chain", 
-                                               choices=c("Heavy Chain" = "Hseq",
-                                                         "Light Chain" = "Lseq",
-                                                         "Don't know" = "unknown_seq")),
-                                  checkboxInput(inputId="two_chains",label="Add another chain",FALSE),
-                                  conditionalPanel(
-                                    condition="input.two_chains==1",
-                                    textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both"),
-                                    
-                                    # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                    radioButtons(inputId="seq_type_2", label="The type of this chain", 
-                                                 choices=c("Heavy Chain" = "Hseq",
-                                                           "Light Chain" = "Lseq"))
-                                  ),
-                                  fileInput("upload","Or upload a fasta file (200 seqs max)"),
-                                  radioButtons(inputId="sele_bl_db", label="Select the region of your interest",
+                                  # horizontal line
+                                  tags$hr(), 
+                                  radioButtons(inputId="sele_bl_db", label="Select the region of your interest to blast against",
                                                choices=c("V region"="v_region",
-                                                         "Full sequence"="full_seq"))
-                         ),
-                         tabPanel("V_seq+isotype",
-                                  textAreaInput("HV_seq_txt","Enter the sequence of the V region of H chain",width="600px",rows=3,resize="both"),
-                                  textAreaInput("LV_seq_txt","Enter the sequence of the V region of L chain",width="600px",rows=3,resize="both"),
-                                  fileInput("upload_v","Or upload a fasta file containing both VH & VL seqs (200 seqs max)"),
-                                  selectInput("iso_select2","Select the name of the isotype you want to search",
-                                              choices=c("All Isotypes",sort(unique(vcab$Htype)))
-                                  )
+                                                         "Full sequence (V & C)"="full_seq"))
                          ),
                          tabPanel("All Entries",
                                   ## Allow the user to download the entire database
@@ -349,8 +424,49 @@ ui <- fluidPage(
              selectInput("file_col","Select the additional column(s) you want to display",
                          choices=colnames(vcab)[!colnames(vcab) %in% c('pdb','Hchain','Lchain','iden_code','Htype','Ltype','Structural.Coverage')], 
                          multiple=TRUE),
-             
              downloadButton("download_subset",label="Download the searching result"),
+             br(),
+             #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
+             conditionalPanel(#condition="input.filter_result==1",
+                              condition="input.tabs==\"Sequence\" ",
+                              # The following options are the same as the "search by attributes" tab:
+                              hr(),
+                              
+                              column(5,
+                                     strong ("Filter the results by features:"),
+                                     br(),br(),
+                                     selectInput("flt_iso_txt","Isotype:",choices=c("All",sort(unique(vcab$Htype)))) %>%
+                                       helper(type="inline",title="Isotype", 
+                                              content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                                        "Each isotype has different function.",
+                                                        "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                     
+                                     selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",sort(unique(vcab$Ltype)))) %>%
+                                       helper(type="inline",title="Light chain type", 
+                                              content=c("There are two light chain types in human, classified by the sequence of C region on L chain.",
+                                                        "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes"))
+                                     
+                                     ),
+                              column(5, offset=2,
+                                     selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                                       helper(type="inline", title="Structural Coverage",
+                                              content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                        "Full antibody covers both Fab and Fc region",
+                                                        "For the defination of Fab and Fc, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                     selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                       helper(type="inline",title="Experimental Method",
+                                              content=c("The experimental method used to acquire the structure.")),
+                                     numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                       helper(type="inline",title="Resolution Threshold",
+                                              content=c("This is used to acquire structures with resolution below the threshold.",
+                                                        "The threshold can be set to value from 1 to 5.")) 
+                                     # Just empty the input to allow the user to select ab without the limit of resolution.
+                                     )#,
+                              #actionButton("filter","Filter the Results")
+                              
+                              ),
+             
+             hr(),
              DT::dataTableOutput("ab_info_table"),
              textOutput("unpair_message"),
              DT::dataTableOutput("unpaired_table")
@@ -373,13 +489,17 @@ ui <- fluidPage(
   # Add the link to SAbDab
   fluidRow(column(12,
                   "The link to ",
-                  tags$a(href="http://opig.stats.ox.ac.uk/webapps/newsabdab/sabdab/",
-                         "SAbDab",
-                         target="_blank")))
+                  tags$a(imageOutput("./sabdab.png"), href="http://opig.stats.ox.ac.uk/webapps/newsabdab/sabdab/")#,
+                         #"SAbDab",
+                         #target="_blank")
+                  ))
   
 )
 
+####################### Server #######################
 server <- function(input,output,session){
+  
+  observe_helpers(withMathJax = TRUE) # allow the display of the helper message when the user click on the question mark next to some text.
   
   ### THE PANEL of antibody information table #################################################
   ns <- session$ns
@@ -387,12 +507,13 @@ server <- function(input,output,session){
   
   ## Assign different contents to the panel of ab_info_table when different tabs are selected in the input panel
   tabs_value <- reactive({input$tabs}) # the title of the tabs
+  seq_sub_tab_value <- reactive({input$seq_tabs})
   ab_info <- reactiveValues() # The reactive value to hold the table of antibody information
+  two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
   
   observeEvent(input$search,{
     # Initialize everything:
-    #ab_info$ab_info_df <- NULL
     initialize_everything()
     # Do the actual job
     if (tabs_value() == "PDB"){
@@ -407,13 +528,10 @@ server <- function(input,output,session){
       }
     }
     else if (tabs_value() == "Search by Attributes"){
-      select_filter <- function(check_col_name,select_input_value,df=vcab){
-        if(select_input_value=="All") TRUE else df[[check_col_name]] %in% c(select_input_value)
-      }
-      
-      o_df <- vcab[select_filter("Htype",input$iso_txt)&select_filter("Ltype",input$Ltype_txt)&select_filter("Structural.Coverage",input$struc_cov)&select_filter("method",input$exp_method),]
-      o_df <- if (is.na(input$res_cut)) o_df else o_df[o_df$resolution <= input$res_cut,]
-      rownames(o_df) <- NULL
+      #o_df <- vcab[select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method),]
+      #o_df <- if (is.na(res_cut)) o_df else o_df[o_df$resolution <= res_cut,] # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
+      o_df <- vcab[filter_the_rows(input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut),]
+      rownames(o_df) <- NULL # reset the index
       
       final_df <- addShow(o_df,ns)
       ab_info$ab_info_df <- final_df
@@ -427,13 +545,13 @@ server <- function(input,output,session){
         ## Display chain type message, the table containing ab_info & blast_result
         
         # If the user doesn't know if the sequence is H/L chain, identify it. Otherwise, display the type(isotype, L chain type) of the chain:
-        chain_type_mess <- function(){
-          # Identify chain type
-          ref_db_dir <- ifelse(input$seq_type == "Hseq",igh_bl,ifelse(input$seq_type == "Lseq",light_bl,all_ref_bl))
-          type_title <- generate_blast_result(input$seq_txt,ref_db_dir)[1,1]
+        chain_type_mess <- function(seq_txt,seq_type){
+          # Identify chain type by blasting against the reference sequence
+          ref_db_dir <- ifelse(seq_type == "Hseq",igh_bl,ifelse(seq_type == "Lseq",light_bl,all_ref_bl))
+          type_title <- generate_blast_result(seq_txt,ref_db_dir)[1,1]
           type <- tail(strsplit(type_title,"\\|")[[1]],n=1)
-          #type <- chain_type_name()
-          if(input$seq_type=="unknown_seq"){
+          
+          if(seq_type=="unknown_seq"){
             Hnames <- c("IGHG1_HUMAN","IGHG2_HUMAN","IGHG3_HUMAN","IGHG4_HUMAN","IGHM_HUMAN","IGHA1_HUMAN","IGHA2_HUMAN","IGHD_HUMAN","IGHE_HUMAN")
             if (type %in% Hnames){
               return ("This chain is likely to be a H chain. Please select the 'Heavy chain' option under the sequence box for further identification.")
@@ -448,101 +566,123 @@ server <- function(input,output,session){
           }
         }
         
-        blast_db_dir <- ifelse(input$seq_type == "Hseq",VCAbH_bl,ifelse(input$seq_type == "Lseq",VCAbL_bl,all_ref_bl))
-        blast_df <- generate_blast_result(input$seq_txt,blast_db_dir) # return the dataframe of the complete result of the blast
-        
-        
-        VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
-        VCAb_blast_df <- VCAb_blast_df[,c("iden_code","Perc.Ident","E")]
-        
-        # To observe if the user choose the correct chain type
-        observeEvent(input$search,{
+        ## Check if the user choose to input two chains ##
+        if (two_chains()==1){
+          # If there are two chains:
+          # Check if the chain types inputted by the user contain one H and one L
+          if (setequal(c(input$seq_type,input$seq_type_2),c("Hseq","Lseq"))){
+            # The chain types inputted by the user is correct, do the job:
+            
+            # Identify which one is H chain, which one is L chain:
+            h_seq <- input$seq_txt
+            l_seq <- input$seq_txt_2
+            if (input$seq_type=="Lseq"){
+              h_seq <- input$seq_txt_2
+              l_seq <- input$seq_txt
+            }
+            
+            t_df <- blast_paired_chains("",h_seq,l_seq, input$sele_bl_db) # the total blast table for VH&VL sequence
+            bl_df <- t_df
+            
+            bl_ab_df <- generate_total_info(bl_df,ns)
+            new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
+          
+            ab_info$ab_info_df <- new_bl_ab_df
+            
+            
+          }
+          else{
+            # remind the user to input correct chain types
+            showModal(modalDialog(title="Wrong input for \"chain type\" ", 
+                                  "When sequences for both chains of the antibody is inputted, the chain types selected must be exactly one H and one L chain."))
+          }
+          
+        }
+        else{
+          # If there is only one chain inputted by the user
+          
+          # Find out which db should be used for blast:
+          blast_v_db <- ifelse(input$seq_type == "Hseq",HV_bl,ifelse(input$seq_type == "Lseq",LV_bl,VCAb_vseq_bl)) # the v_seq db
+          #note: when the user select "unknow type" for V region seqs, it would blast against all the V seqs
+          
+          blast_f_db <- ifelse(input$seq_type == "Hseq",VCAbH_bl,ifelse(input$seq_type == "Lseq",VCAbL_bl,all_ref_bl)) # the full_seq db
+          blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
+          
+          # BLAST:
+          blast_df <- generate_blast_result(input$seq_txt,blast_db_dir) # return the dataframe of the complete result of the blast
+          
+          VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+          #VCAb_blast_df <- VCAb_blast_df[,c("iden_code","Perc.Ident","E")]
+          
+          # To observe if the user choose the correct chain type
           if(input$seq_type != "unknown_seq"){
             top_blast_ident <- VCAb_blast_df[1,"Perc.Ident"]
             if (top_blast_ident<50){
               showModal(modalDialog(title="Are you sure you select the correct chain type?", "The Perc. Ident for the top hits are too low, 
                                     you might want to use the 'Don't know' option to further confirm the chain type of this sequence."))
             }
-            }
-          })
+          }
+          
+          # Record the order of the blast result
+          VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
+          
+          bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
+          ##### IMPORTANT: Avoid extract one ab_entry for multiple times
+          
+          new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+          rownames(new_bl_ab_df) <- NULL
+          new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
+          
+          ab_info$ab_info_df <- new_bl_ab_df
+          #ab_info$ab_info_df <- VCAb_blast_df
+          ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
+          
+        }
         
-        # Record the order of the blast result
-        VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
         
-        bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
-        ##### IMPORTANT: Avoid extract one ab_entry for multiple times
-        
-        new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
-        rownames(new_bl_ab_df) <- NULL
-        new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
-        
-        ab_info$ab_info_df <- new_bl_ab_df
-        #ab_info$ab_info_df <- VCAb_blast_df
-        ab_info$chain_type_message <- chain_type_mess()
         }
       else{
-        ## IF the user upload the file, 
-        ## only display the table containing ab_info & blast_result, without the chain type message.
+        # IF the user upload the file, 
+        # only display the table containing ab_info & blast_result, without the chain type message.
+        
         uploaded <- input$upload
         uploaded_path <- check_uploaded_file(uploaded$datapath) # check if the uploaded file is a fasta file containing 200 seqs max.
+        
+        # Check if the uploaded file is a fasta file containing 200 seqs max.
         if (is.null(uploaded_path)){
-          ab_info$ab_info_df <- NULL
-        }
-        else{
-          bl_result <- read_fasta_file_and_blast(uploaded_path) # blast result
-          bl_ab_df <- generate_total_info(bl_result,ns) # Get the total_info table containing both bl&ab info
-          ab_info$ab_info_df <- bl_ab_df
-        }
-      }
-      
-    }
-    else if (tabs_value() == "V_seq+isotype"){
-      ## Generate the merged table containing both blast & Ab info, and this table is filtered with the isotype inputted by user
-      
-      if (is.null(input$upload_v)){
-        # User only input one pair of VH & VL seqs
-        t_df <- blast_vh_vl("",input$HV_seq_txt,input$LV_seq_txt) # the total blast table for VH&VL sequence
-        
-        bl_ab_df <- generate_total_info(t_df,ns)
-        new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
-        
-        # Filter the bl_ab_df with the isotype inputted by user (if all option, don't filter)
-        new_bl_ab_df <- if(input$iso_select2=="All Isotypes") new_bl_ab_df else new_bl_ab_df %>% dplyr::filter(Htype==input$iso_select2)
-        
-        #final_bl_ab_df <- addShow(new_bl_ab_df)
-        
-        ab_info$ab_info_df <- new_bl_ab_df
-        
-        
-      }
-      else{
-        # User input a fasta file containing VH & VL seqs
-        up_v <- input$upload_v
-        up_v_path <- check_uploaded_file(up_v$datapath) # check if the uploaded file is a fasta file containing 200 seqs max.
-        if (is.null(up_v_path)){
+          # When error happens, i.e. it's not a fasta file containing max.200 seqs
           ab_info$ab_info_df <- NULL
           ab_info$unpaired <- NULL
-          #print ("hhhhhh")
         }
         else{
-          pair_info <- find_paired_V_seqs_and_blast(up_v_path)
-          unpaired <- pair_info$unpaired # allow the user to download this table later
-          paired_bl <- pair_info$paired_bl
-          paired_bl_ab <- generate_total_info(paired_bl,ns)
+          # When the uploaded file is a valid fasta file containing 200 seqs max.:
+          ## Check if the user choose to input paired chains ##
+          if (input$up_paired=="paired"){
+            # if the uploaded file containing paired H & L chains
+            pair_info <- uploaded_file_blast_paired(uploaded_path,input$sele_bl_db)
+            unpaired <- pair_info$unpaired # allow the user to download this table later
+            paired_bl <- pair_info$paired_bl
+            paired_bl_ab <- generate_total_info(paired_bl,ns)
+            
+            ab_info$ab_info_df <- paired_bl_ab
+            ab_info$unpaired <- unpaired
+            
+          }
+          else{
+            # if the sequence in uploaded file is unpaired
+            bl_result <- uploaded_file_blast_unpaired(uploaded_path,input$sele_bl_db) # blast result
+            bl_ab_df <- generate_total_info(bl_result,ns) # Get the total_info table containing both bl&ab info
+            
+            ab_info$ab_info_df <- bl_ab_df
+          }
           
-          # Filter the table by the isotype selected by the user:
-          paired_bl_ab <- if(input$iso_select2=="All Isotypes") paired_bl_ab else paired_bl_ab %>% dplyr::filter(Htype==input$iso_select2)
           
-          #final_paired_bl_ab <- addShow(paired_bl_ab)
-          ab_info$ab_info_df <- paired_bl_ab
-          ab_info$unpaired <- unpaired
         }
+        
       }
       
-      ab_info$chain_type_message <- NULL
-      
-      
     }
+    
     else{
       # Download all the VCAb entries
       ab_info$ab_info_df <- NULL
@@ -577,28 +717,41 @@ server <- function(input,output,session){
   
   # Find which columns will be displayed
   bl_col <- c("QueryID","SubjectID","Perc<br>Ident","E")
-  v_bl_col <- c("QueryID","Perc<br>Ident<br>H","E<br>H","Perc<br>Ident<br>L","E<br>L")
+  two_bl_col <- c("QueryID","Perc<br>Ident<br>H","E<br>H","Perc<br>Ident<br>L","E<br>L")
   
   file_col_idx <- reactive({
     if (tabs_value()=="PDB" | tabs_value()=="Search by Attributes"){
       return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
     }
-    else if (tabs_value()=="Sequence"){
-      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+    else if ((seq_sub_tab_value()=="Search manually" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired")){
+      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
       #return (names(ab_info$ab_info_df))
     }
     else {
-      return (names(ab_info$ab_info_df) %in% c(v_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
     }
   })
+  
+  # Filter the rows based on the user input
+  file_row_idx <- function(df){
+    reactive({
+      if (tabs_value()=="Sequence"){
+        return (filter_the_rows(input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,df))
+      }
+      else{
+        return (TRUE)
+      }
+    })
+  }
+  
   
   
   # Show the information
   output$chain_type_message <- renderText({ab_info$chain_type_message})
   output$ab_info_table <- DT::renderDataTable({
-    DT::datatable(ab_info$ab_info_df[,file_col_idx()],selection="single",escape=F, 
+    DT::datatable(ab_info$ab_info_df[file_row_idx(ab_info$ab_info_df)(),file_col_idx()],selection="single",escape=F, 
                   options=list(scrollX = TRUE))
-    #DT::datatable(ab_info$ab_info_df,selection="none",escape=F,options=list(scrollX=TRUE)) # for test
+    #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
   })
   
   # Display the message if there are unpaired seq in the fasta file
@@ -791,7 +944,15 @@ server <- function(input,output,session){
     pdb_dir_val$dir <- ""
     pdb_dir_val$mess <- NULL
   }
+  
+  # When new tab is selected, initialize everything
   observeEvent(input$tabs,{
+    initialize_everything()
+    
+  })
+  
+  # when new seq tab is selected, initialize everything
+  observeEvent(input$seq_tabs,{
     initialize_everything()
     
   })
