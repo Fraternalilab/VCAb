@@ -1,0 +1,18 @@
+"ResidNe" "Chain" "ResidNr" "iCode" "D_Phob.A.2" "D_Phil.A.2" "D_SASA.A.2"
+"4nyl_EF_C_E-4nyl_EF_C_F.22" "HIS" "E" 172 "-" 23.49 9.9 33.39
+"4nyl_EF_C_E-4nyl_EF_C_F.23" "THR" "E" 173 "-" 0.29 2.79 3.08
+"4nyl_EF_C_E-4nyl_EF_C_F.24" "PHE" "E" 174 "-" 95.81 0.2 96.01
+"4nyl_EF_C_E-4nyl_EF_C_F.25" "PRO" "E" 175 "-" 46.92 1.77 48.69
+"4nyl_EF_C_E-4nyl_EF_C_F.26" "ALA" "E" 176 "-" 0.46 1.39 1.85
+"4nyl_EF_C_E-4nyl_EF_C_F.27" "VAL" "E" 177 "-" 13.03 0.21 13.24
+"4nyl_EF_C_E-4nyl_EF_C_F.36" "SER" "FALSE" 162 "-" 57.31 10.54 67.85
+"4nyl_EF_C_E-4nyl_EF_C_F.37" "VAL" "FALSE" 163 "-" 4.13 9.09 13.23
+"4nyl_EF_C_E-4nyl_EF_C_F.38" "THR" "FALSE" 164 "-" 24.53 16.47 41
+"4nyl_EF_C_E-4nyl_EF_C_F.39" "GLU" "FALSE" 165 "-" 1.41 1.18 2.58
+"4nyl_EF_C_E-4nyl_EF_C_F.41" "ASP" "FALSE" 167 "-" 0.55 5.06 5.61
+"4nyl_EF_C_E-4nyl_EF_C_F.44" "ASP" "FALSE" 170 "-" 0 0.04 0.04
+"4nyl_EF_C_E-4nyl_EF_C_F.46" "THR" "FALSE" 172 "-" 0.01 0.47 0.48
+"4nyl_EF_C_E-4nyl_EF_C_F.47" "TYR" "FALSE" 173 "-" 0.15 1.79 1.94
+"4nyl_EF_C_E-4nyl_EF_C_F.48" "SER" "FALSE" 174 "-" 20.48 1.63 22.11
+"4nyl_EF_C_E-4nyl_EF_C_F.49" "LEU" "FALSE" 175 "-" 6.31 11.44 17.73
+"4nyl_EF_C_E-4nyl_EF_C_F.50" "SER" "FALSE" 176 "-" 26.86 16.54 43.41
