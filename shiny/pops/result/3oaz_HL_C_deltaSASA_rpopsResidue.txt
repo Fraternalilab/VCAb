@@ -1,1 +1,0 @@
-"ResidNe" "Chain" "ResidNr" "iCode" "D_Phob.A.2" "D_Phil.A.2" "D_SASA.A.2"
