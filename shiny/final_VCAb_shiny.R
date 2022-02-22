@@ -9,8 +9,8 @@ library (ggplot2)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="new_vcab.csv"
-pops_parent_dir <- "./pops/result/"
-pdb_parent_dir <- "./pdb_struc/chain_pdb/"
+pops_parent_dir <- "../pops/result/"
+pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
 # Directories of blast db:
 # ref db:
@@ -562,6 +562,7 @@ server <- function(input,output,session){
         ab_info$chain_type_message <- NULL
       }
       else{
+        ab_info$ab_info_df <- NULL
         ab_info$chain_type_message <- "This pdb is not in the database."
       }
     }
@@ -735,12 +736,15 @@ server <- function(input,output,session){
       ab_info$ab_info_df <- NULL
       ab_info$chain_type_message <- NULL
     }
-    for (i in 1:nrow(ab_info$ab_info_df)){
-      ab_info$ab_info_df[i,"Structure"] <- sprintf(
-        ' %s <a href="http://pdbe.org/%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >PDBe</a> <a href="http://rcsb.org/structure/%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >RCSB</a> <a href="http://opig.stats.ox.ac.uk/webapps/newsabdab/sabdab/structureviewer/?pdb=%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >SAbDab</a>',
-        ab_info$ab_info_df[i,"Structure"], substr(ab_info$ab_info_df[i,"iden_code"], 1, 4), substr(ab_info$ab_info_df[i,"iden_code"], 1, 4) , substr(ab_info$ab_info_df[i,"iden_code"], 1, 4)
-      )
+    if (is.null(ab_info$ab_info_df)==FALSE){
+      for (i in 1:nrow(ab_info$ab_info_df)){
+        ab_info$ab_info_df[i,"Structure"] <- sprintf(
+          ' %s <a href="http://pdbe.org/%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >PDBe</a> <a href="http://rcsb.org/structure/%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >RCSB</a> <a href="http://opig.stats.ox.ac.uk/webapps/newsabdab/sabdab/structureviewer/?pdb=%s" target="_blank" onmousedown="event.preventDefault(); event.stopPropagation(); return false;"; >SAbDab</a>',
+          ab_info$ab_info_df[i,"Structure"], substr(ab_info$ab_info_df[i,"iden_code"], 1, 4), substr(ab_info$ab_info_df[i,"iden_code"], 1, 4) , substr(ab_info$ab_info_df[i,"iden_code"], 1, 4)
+        )
+      }
     }
+    
   })
   
   # Make the ab_info_df downloadable for users
