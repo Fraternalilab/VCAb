@@ -629,39 +629,39 @@ def generate_pdbid_list (df,out_dir):
 
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
-#parser = argparse.ArgumentParser(description="Generate the VCAb database")
-#parser.add_argument("--in_file",help="the input tsv file containing paired H and L chains from antibody PDBs, such as the csv file downloaded from SAbDab")
-#args = parser.parse_args()
+parser = argparse.ArgumentParser(description="Generate the VCAb database")
+parser.add_argument("--in_file",help="the input tsv file containing paired H and L chains from antibody PDBs, such as the csv file downloaded from SAbDab")
+args = parser.parse_args()
 
-# Part 1.
-#sabdab=pd.read_csv(args.in_file,sep='\t')
+# 1.1
+sabdab=pd.read_csv(args.in_file,sep='\t')
 
-#paired,H_df,L_df=sabdab_filter(sabdab)
+paired,H_df,L_df=sabdab_filter(sabdab)
 
-#paired_seq=add_seq_to_sabdab (paired) # add sequences to the Abs with paired chains
+paired_seq=add_seq_to_sabdab (paired) # add sequences to the Abs with paired chains
+## For testing: show the acquired df now
 #paired_seq.to_csv("paired.csv")
-#filtered_paired_seq,seq_err=filter_out_seq_error (paired_seq) # filter out abs with seqs can't downloaded from PDBe (ususally because of the wrong annotation of chain)
+filtered_paired_seq,seq_err=filter_out_seq_error (paired_seq) # filter out abs with seqs can't downloaded from PDBe (ususally because of the wrong annotation of chain)
+## For testing: show the acquired df now
 #filtered_paired_seq.to_csv("paired.csv")
-#seq_err.to_csv("./unusual_cases/seq_err.csv")
+seq_err.to_csv("./unusual_cases/seq_err.csv")
 
-## For testing
-#filtered_paired_seq=pd.read_csv("paired.csv").drop(columns="Unnamed: 0")
-
-#cHL=collapse_by_coordinate_seqs (filtered_paired_seq)
+cHL=collapse_by_coordinate_seqs (filtered_paired_seq)
+## For testing: show the acquired df now
 #cHL.to_csv("cHL_paired.csv")
 
-## download the pdb files
-#generate_pdbid_list(cHL,"../pdb_struc/")
-#os.system("sh ../pdb_struc/pdb_download.sh -f ../pdb_struc/pdbid_lst.txt -o ../pdb_struc/full_pdb/ -p")
+# download the pdb files
+generate_pdbid_list(cHL,"../pdb_struc/") # out_dir: ../pdb_struc
+os.system("sh ../pdb_struc/pdb_download.sh -f ../pdb_struc/pdbid_lst.txt -o ../pdb_struc/full_pdb/ -p")
 
-## generate the fasta files
-#convert_seq_from_df_to_fasta(cHL,'H_seq',"../seq_db/vcab_db")
-#convert_seq_from_df_to_fasta(cHL,'H_coordinate_seq',"../seq_db/vcab_db")
+# generate the fasta files
+convert_seq_from_df_to_fasta(cHL,'H_seq',"../seq_db/vcab_db")
+convert_seq_from_df_to_fasta(cHL,'H_coordinate_seq',"../seq_db/vcab_db")
 
-#convert_seq_from_df_to_fasta(cHL,'L_seq',"../seq_db/vcab_db")
-#convert_seq_from_df_to_fasta(cHL,'L_coordinate_seq',"../seq_db/vcab_db")
+convert_seq_from_df_to_fasta(cHL,'L_seq',"../seq_db/vcab_db")
+convert_seq_from_df_to_fasta(cHL,'L_coordinate_seq',"../seq_db/vcab_db")
 
-# Part 2.
+# 1.2
 hfqseqs="../seq_db/vcab_db/H_seq.fasta"
 lfqseqs="../seq_db/vcab_db/L_seq.fasta"
 
@@ -677,29 +677,49 @@ lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
 hcoorbl=generate_bl_result (htqseqs,h_ref_db,"h_coordinate_seq_bl","./blast_result")
 lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_result")
 
-# For testing
-cHL=pd.read_csv("cHL_paired.csv").drop(columns="Unnamed: 0")
 total_vcab=generate_final_db (cHL,hbl,lbl,hcoorbl,lcoorbl)
-total_vcab.to_csv("cHL_paired_bl.csv")
 
+# Extracted unusual cases:
 vcab,unusual=find_unusual_cases (total_vcab)
-f_vcab=vcab.loc[vcab["Structural Coverage"]!="check V/C Annotation"] # exclude unusual entries
-only_v=vcab.loc[vcab["Structural Coverage"]=="check V/C Annotation"] # These entries are probably Abs only containing V region.
-only_v.to_csv("./unusual_cases/suspicious_v_c_annotation.csv")
+f_vcab=vcab.loc[(vcab["Structural Coverage"]!="check V/C Annotation") & (vcab["Structural Coverage"]!="not classified")] # exclude unusual entries
+sus_v_c=vcab.loc[vcab["Structural Coverage"]=="check V/C Annotation"] # These entries are probably Abs only containing V region.
+struc_cov_unclassified=vcab.loc[vcab["Structural Coverage"]=="not classified"]
+sus_v_c.to_csv("./unusual_cases/suspicious_v_c_annotation.csv")
 unusual.to_csv("./unusual_cases/unusual.csv")
 
-f_vcab.to_csv("vcab_without_pdb_vcb.csv")
 
-# 1.CUT THE PDB FILES (also add the pdb_VCB to vcab)
+# 2.1.CUT THE PDB FILES (also add the pdb_VCB to vcab)
 generate_chain_pdb_total (f_vcab,"../pdb_struc/full_pdb/","../pdb_struc/chain_pdb/")
 generate_C_pdb_total (f_vcab,"../pdb_struc/full_pdb/","../pdb_struc/c_pdb/")
 
-# 2. ADD PDB_VC_BOUNDARY & true seqs of C region TO VCAB
+# 2.2 ADD PDB_VC_BOUNDARY & true seqs of C region TO VCAB
 vcab_pdb_vcb,err=read_pdb_VC_Boundary_and_C_true_seqs (f_vcab,"../pdb_struc/c_pdb/")
 if (len(err)>0):
-    err.to_csv("failed_to_add_pdb_vcb.csv")
-# 3. ADD full seqs of V and C
+    err.to_csv("./unusual_cases/failed_to_add_pdb_vcb.csv")
+# 2.3 ADD full seqs of V and C
 ff_vcab=get_V_C_seq(vcab_pdb_vcb)
 ff_vcab=ff_vcab.reset_index(drop=True)
 
 ff_vcab.to_csv("vcab.csv")
+
+# 3. Generate files for the shiny app:
+# 3.1. Generate POPSComp results
+os.system("cd ../pops")
+os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
+os.system("cd -")
+
+# 3.2. Generate BLAST databases
+# generate fasta files
+convert_seq_from_df_to_fasta(ff_vcab,'HV_seq',"../seq_db/vcab_db")
+convert_seq_from_df_to_fasta(ff_vcab,'LV_seq',"../seq_db/vcab_db")
+os.system("cat HV_seq.fasta LV_seq.fasta > all_v_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V region
+os.system("cat H_seq.fasta L_seq.fasta > all_full_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V + C region (full sequence)
+# make BLAST database. Note: BLAST should be installed on command line
+os.system("makeblastdb -in ../seq_db/vcab_db/H_seq.fasta -dbtype prot")
+os.system("makeblastdb -in ../seq_db/vcab_db/L_seq.fasta -dbtype prot")
+os.system("makeblastdb -in ../seq_db/vcab_db/HV_seq.fasta -dbtype prot")
+os.system("makeblastdb -in ../seq_db/vcab_db/LV_seq.fasta -dbtype prot")
+os.system("makeblastdb -in ../seq_db/vcab_db/all_v_seq.fasta -dbtype prot")
+os.system("makeblastdb -in ../seq_db/vcab_db/all_full_seq.fasta -dbtype prot")
+
+# 3.3 Download all the PDB files, Cut pdb files (Done in previous steps)
