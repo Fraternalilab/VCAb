@@ -12,6 +12,9 @@ import os
 import argparse
 import time
 
+import warnings
+warnings.filterwarnings("ignore")
+
 # Print iterations progress
 # This function (printProgressBar()) is from https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters:
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -35,7 +38,7 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
     if iteration == total:
         print()
 
-######################## Part 1 Filter SAbDab/Get seq info ################################################
+######################## 1.1 Filter SAbDab/Get seq info ################################################
 def sabdab_filter (df):
     #filter out the pdbs contain not-paired Hchain or Lchain (H chain only or L chain only)
     # df: initial SAbDab table directly downloaded from SAbDab
@@ -61,47 +64,92 @@ def sabdab_filter (df):
 
     return HL, H_df, L_df
 
-# download the author-seq directly from PDBe & incorporate the seq_fragments to generate coordinate_seqs
+# download the author-seq directly from PDBe
+# The part to incorporate the seq_fragments to generate coordinate_seqs is deleted (in the comment), instead we extract coordinate sequence directly from pdb file
 def get_seq_from_pdbe(pdb,c):
     # c: chain id
     URL = 'https://www.ebi.ac.uk/pdbe/api/'
     n_pdb=pdb.lower()
     chainid=c
     mol_data=requests.get(URL + 'pdb/entry/molecules/' + n_pdb)
-    structural_coverage=requests.get(URL+'pdb/entry/polymer_coverage/'+n_pdb+'/chain/'+chainid)
+    #structural_coverage=requests.get(URL+'pdb/entry/polymer_coverage/'+n_pdb+'/chain/'+chainid)
 
-    if mol_data.status_code == 200 and structural_coverage.status_code == 200:
+    #if mol_data.status_code == 200 and structural_coverage.status_code == 200:
+    if mol_data.status_code == 200:
         # test if API is working
         mol_info=mol_data.json()[n_pdb]
-        coverage_info=structural_coverage.json()[n_pdb]['molecules'][0]['chains'][0]['observed']
-        coverage=[[i['start']['residue_number']-1,i['end']['residue_number']]for i in coverage_info]
+        #coverage_info=structural_coverage.json()[n_pdb]['molecules'][0]['chains'][0]['observed']
+        #coverage=[[i['start']['residue_number']-1,i['end']['residue_number']]for i in coverage_info]
 
         for i in range(len(mol_info)):
             # to find the molecular information(mol_name) of specific chain, because mol_info contains info of multiple entity
             chain=mol_info[i]['in_chains']
             if chainid in chain:
-                fseq=mol_info[i]['pdb_sequence'] #seq[start-1:end]
+                try:
+                    fseq=mol_info[i]['pdb_sequence'] #seq[start-1:end]
+                except KeyError as e:
+                    fseq="mol: Error - sequence can't be accessed by API"
+                    print (f"This sequence can't be downloaded via PDBe API. PDB: {pdb}, ChainID:{chainid}. \n Error message: KeyError:{e}. \n Go to https://www.ebi.ac.uk/pdbe/api/doc/ for details")
 
                 #check if sequence begins with (PCA):
                 if '(PCA)' in fseq:
                     fseq=fseq.replace('(PCA)','')
-                    coverage=[[i['start']['residue_number']-1,i['end']['residue_number']-1]for i in coverage_info]
+                    #coverage=[[i['start']['residue_number']-1,i['end']['residue_number']-1]for i in coverage_info]
                     # since '(PCA)' is at the start of the sequence, the ending point for the coverage needs to -1
 
-                sseq=[fseq[i[0]:i[1]] for i in coverage]
-                coor_seq=''.join(sseq)
-                # return the full_seq, coordinate_seq
-                return fseq,coor_seq
-
-
-    elif mol_data.status_code == 200 and structural_coverage.status_code == 404:
+                #sseq=[fseq[i[0]:i[1]] for i in coverage]
+                #coor_seq=''.join(sseq)
+                ## return the full_seq, coordinate_seq
+                #return fseq,coor_seq
+                return fseq
+        # Use recursion to solve this problem: due to the messy pdb annotation, the chain id could be "HHH", thus the sequence can't be fetched using "H" as the id
         if len(c)>3: # recursion: break condition
-            return 'mol: Error - %s, s_coverage: Error - %s' % (mol_data.status_code, structural_coverage.status_code),'mol: Error - %s, s_coverage: Error - %s' % (mol_data.status_code, structural_coverage.status_code)
+            return 'mol: Error - %s' % (mol_data.status_code)
         else:
             new_c=c*3 # due to the messy pdb annotation, some chain is labeled as "H" in sabdab, but actually the chain id is "HHH"
             return get_seq_from_pdbe(pdb,new_c)
+
     else:
-        return 'mol: Error - %s, s_coverage: Error - %s' % (mol_data.status_code, structural_coverage.status_code),'mol: Error - %s, s_coverage: Error - %s' % (mol_data.status_code, structural_coverage.status_code)
+        return 'mol: Error - %s' % (mol_data.status_code)
+
+
+def read_coor_seq_and_the_start_position_of_chains (pdb_file_name,h,l,pdb_dir):
+    # Read the coordinate sequence and the start positions of the H-L chains
+    # The start position in the C region-only files would be the position of VCBoundary in PDB files
+    # pdb_file_name: the pdb file name without ".pdb", is the pdb file where you are going to extract sequence from. e.g. "7c2l", "7c2l_HL", "7c2l_HL_C"
+    # h, l: the chain id for H and L chains
+    # pdb_dir: the directory of the pdb files
+
+    parser = PDBParser()
+
+    try:
+        structure=parser.get_structure(pdb_file_name, f'{pdb_dir}/{pdb_file_name}.pdb')
+        model=structure[0]
+        try:
+            hchain=model[h]
+            lchain=model[l]
+        except:
+            # e.g.: The Hchain in vcab table is "H", but the chain name in pdb file is "h", this would cause an error
+            h=h.swapcase()
+            l=l.swapcase()
+            hchain=model[h]
+            lchain=model[l]
+
+        hchain_start = list(hchain)[0].id[1]
+        lchain_start = list(lchain)[0].id[1]
+        # Read true C seq
+        ## get the seqs for all the chains in the pdb file
+        chains = {chain.id:seq1(''.join(residue.resname for residue in chain)).replace("X","") for chain in structure.get_chains()}
+
+        h_seq = chains[h]
+        l_seq = chains[l]
+    except:
+        # file not found
+        hchain_start = "pdb not found"
+        lchain_start = "pdb not found"
+        h_seq = ""
+        l_seq = ""
+    return hchain_start,lchain_start,h_seq,l_seq
 
 # Add The author_seq(seq) & coordinate_seq  to the sabdab
 def add_seq_to_sabdab (o_df):
@@ -113,19 +161,20 @@ def add_seq_to_sabdab (o_df):
     L_seq_lst=[]
     L_coor_seq_lst=[]
 
-    printProgressBar(0, len(df), prefix = 'Downloading sequence:', suffix = 'Complete', length = 50)
+    printProgressBar(0, len(df), prefix = 'Downloading/Extracting sequence:', suffix = 'Complete', length = 50)
     for i in df.index:
         pdb=df.loc[i,'pdb']
         h=df.loc[i,'Hchain'][0]# Take only the first chain name
         l=df.loc[i,'Lchain'][0]
-        H_seq,H_coor_seq=get_seq_from_pdbe(pdb,h)
-        L_seq,L_coor_seq=get_seq_from_pdbe(pdb,l)
+        H_seq=get_seq_from_pdbe(pdb,h)
+        L_seq=get_seq_from_pdbe(pdb,l)
+        __,__,H_coor_seq,L_coor_seq=read_coor_seq_and_the_start_position_of_chains (pdb,h,l,"../pdb_struc/full_pdb")
 
         H_seq_lst.append(H_seq)
         H_coor_seq_lst.append(H_coor_seq)
         L_seq_lst.append(L_seq)
         L_coor_seq_lst.append(L_coor_seq)
-        printProgressBar(i + 1, len(df), prefix = 'Downloading sequence:', suffix = 'Complete', length = 50)
+        printProgressBar(i + 1, len(df), prefix = 'Downloading/Extracting sequence:', suffix = 'Complete', length = 50)
 
     df['H_seq']=H_seq_lst
     df['H_coordinate_seq']=H_coor_seq_lst
@@ -194,7 +243,7 @@ def convert_seq_from_df_to_fasta (df,col_name,out_dir):
         file.write(seq+'\n')
     file.close()
 
-######################## Part 2 Generate vcab except the VCB of the PDB file ########################
+######################## 1.2 Generate vcab (identify isotype, light chain type, structural coverage) except the VCB in the PDB file ########################
 chain_type_names={'sp|P01857|IGHG1_HUMAN':"IgG1",
                  'sp|P01859|IGHG2_HUMAN':"IgG2",
                  'sp|P01860|IGHG3_HUMAN':"IgG3",
@@ -431,7 +480,7 @@ def find_unusual_cases (df):
     return filtered_df, unusual_df
 
 
-######################### PART 2.1 CUT THE PDB FILES  ######################################################
+######################### 2.1 CUT THE PDB FILES  ######################################################
 def keep_chain (model,chains):
     chain_to_remove = []
     for c in model:
@@ -529,7 +578,7 @@ def generate_chain_pdb_total (df,in_dir,out_dir):
     return pd.DataFrame(error,columns=df.keys())
 
 
-######################### PART 2.2 ADD PDB_VC_BOUNDARY  ######################################################
+######################### 2.2 ADD PDB_VC_BOUNDARY (In order to specify the VC_Boundary in the 3D viewer of the webserver)  ######################################################
 def read_pdb_VC_Boundary_and_C_true_seqs (df,pdb_dir):
     # df: the vcab db
     # pdb_dir: the directory of the pdb files CONTAINING C REGION ONLY
@@ -547,33 +596,7 @@ def read_pdb_VC_Boundary_and_C_true_seqs (df,pdb_dir):
         h=df.loc[i,'Hchain'][0]
         l=df.loc[i,'Lchain'][0]
 
-        try:
-            structure=parser.get_structure(iden_code, f'{pdb_dir}{iden_code}_C.pdb')
-            model=structure[0]
-            try:
-                hchain=model[h]
-                lchain=model[l]
-            except:
-                # e.g.: The Hchain in vcab table is "H", but the chain name in pdb file is "h", this would cause an error
-                h=h.swapcase()
-                l=l.swapcase()
-                hchain=model[h]
-                lchain=model[l]
-
-            hchain_start = list(hchain)[0].id[1]
-            lchain_start = list(lchain)[0].id[1]
-            # Read true C seq
-            ## get the seqs for all the chains in the pdb file
-            chains = {chain.id.upper():seq1(''.join(residue.resname for residue in chain)) for chain in structure.get_chains()}
-
-            h_seq = chains[h]
-            l_seq = chains[l]
-        except:
-            # file not found
-            hchain_start = "pdb not found"
-            lchain_start = "pdb not found"
-            h_seq = ""
-            l_seq = ""
+        hchain_start,lchain_start,h_seq,l_seq = read_coor_seq_and_the_start_position_of_chains (f"{iden_code}_C",h,l,"../pdb_struc/c_pdb")
 
         pdb_h_vcb.append(hchain_start)
         pdb_l_vcb.append(lchain_start)
@@ -590,7 +613,7 @@ def read_pdb_VC_Boundary_and_C_true_seqs (df,pdb_dir):
 
     return result_df,error_df
 
-######################### PART 2.3 ADD AUTHOR SEQS of V and C REGIONS  ######################################################
+######################### 2.3 Separate AUTHOR SEQS into V and C REGIONS  ######################################################
 def get_V_C_seq(df):
     all_hv=[]
     all_hc=[]
@@ -635,24 +658,30 @@ args = parser.parse_args()
 
 # 1.1
 sabdab=pd.read_csv(args.in_file,sep='\t')
+#sub_sabdab=sabdab.iloc[0:50,:] # For test
 
 paired,H_df,L_df=sabdab_filter(sabdab)
 
+# download the pdb files
+print ("Downloading PDB structures...")
+generate_pdbid_list(paired,"../pdb_struc/") # out_dir: ../pdb_struc
+os.system("sh ../pdb_struc/pdb_download.sh -f ../pdb_struc/pdbid_lst.txt -o ../pdb_struc/full_pdb/ -p")
+
 paired_seq=add_seq_to_sabdab (paired) # add sequences to the Abs with paired chains
-## For testing: show the acquired df now
+# For testing: show the acquired df now
 #paired_seq.to_csv("paired.csv")
 filtered_paired_seq,seq_err=filter_out_seq_error (paired_seq) # filter out abs with seqs can't downloaded from PDBe (ususally because of the wrong annotation of chain)
 ## For testing: show the acquired df now
 #filtered_paired_seq.to_csv("paired.csv")
+seq_err=seq_err.reset_index(drop=True)
 seq_err.to_csv("./unusual_cases/seq_err.csv")
 
+print ("Generating VCAb database ...")
 cHL=collapse_by_coordinate_seqs (filtered_paired_seq)
-## For testing: show the acquired df now
+# For testing: show the acquired df now
 #cHL.to_csv("cHL_paired.csv")
+#cHL=pd.read_csv("cHL_paired.csv").drop(columns="Unnamed: 0")
 
-# download the pdb files
-generate_pdbid_list(cHL,"../pdb_struc/") # out_dir: ../pdb_struc
-os.system("sh ../pdb_struc/pdb_download.sh -f ../pdb_struc/pdbid_lst.txt -o ../pdb_struc/full_pdb/ -p")
 
 # generate the fasta files
 convert_seq_from_df_to_fasta(cHL,'H_seq',"../seq_db/vcab_db")
@@ -679,13 +708,17 @@ lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_resu
 
 total_vcab=generate_final_db (cHL,hbl,lbl,hcoorbl,lcoorbl)
 
-# Extracted unusual cases:
+# Extract unusual cases:
 vcab,unusual=find_unusual_cases (total_vcab)
 f_vcab=vcab.loc[(vcab["Structural Coverage"]!="check V/C Annotation") & (vcab["Structural Coverage"]!="not classified")] # exclude unusual entries
 sus_v_c=vcab.loc[vcab["Structural Coverage"]=="check V/C Annotation"] # These entries are probably Abs only containing V region.
 struc_cov_unclassified=vcab.loc[vcab["Structural Coverage"]=="not classified"]
-sus_v_c.to_csv("./unusual_cases/suspicious_v_c_annotation.csv")
+sus_v_c=sus_v_c.reset_index(drop=True)
+unusual=unusual.reset_index(drop=True)
+struc_cov_unclassified=struc_cov_unclassified.reset_index(drop=True)
+sus_v_c.to_csv("./unusual_cases/suspicious_v_c_annotation_in_SAbDab.csv")
 unusual.to_csv("./unusual_cases/unusual.csv")
+struc_cov_unclassified.to_csv("./unusual_cases/struc_cov_not_classified.csv")
 
 
 # 2.1.CUT THE PDB FILES (also add the pdb_VCB to vcab)
@@ -700,20 +733,23 @@ if (len(err)>0):
 ff_vcab=get_V_C_seq(vcab_pdb_vcb)
 ff_vcab=ff_vcab.reset_index(drop=True)
 
-ff_vcab.to_csv("vcab.csv")
+ff_vcab.to_csv("new_vcab.csv")
 
 # 3. Generate files for the shiny app:
 # 3.1. Generate POPSComp results
+print ("Going through POPSComp analysis...")
 os.system("cd ../pops")
 os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
 os.system("cd -")
 
 # 3.2. Generate BLAST databases
 # generate fasta files
+print ("Generating BLAST databases...")
+#ff_vcab=pd.read_csv("new_vcab.csv").drop(columns="Unnamed: 0")
 convert_seq_from_df_to_fasta(ff_vcab,'HV_seq',"../seq_db/vcab_db")
 convert_seq_from_df_to_fasta(ff_vcab,'LV_seq',"../seq_db/vcab_db")
-os.system("cat HV_seq.fasta LV_seq.fasta > all_v_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V region
-os.system("cat H_seq.fasta L_seq.fasta > all_full_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V + C region (full sequence)
+os.system("cat ../seq_db/vcab_db/HV_seq.fasta ../seq_db/vcab_db/LV_seq.fasta > ../seq_db/vcab_db/all_v_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V region
+os.system("cat ../seq_db/vcab_db/H_seq.fasta ../seq_db/vcab_db/L_seq.fasta > ../seq_db/vcab_db/all_full_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V + C region (full sequence)
 # make BLAST database. Note: BLAST should be installed on command line
 os.system("makeblastdb -in ../seq_db/vcab_db/H_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/L_seq.fasta -dbtype prot")
@@ -721,5 +757,3 @@ os.system("makeblastdb -in ../seq_db/vcab_db/HV_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/LV_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/all_v_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/all_full_seq.fasta -dbtype prot")
-
-# 3.3 Download all the PDB files, Cut pdb files (Done in previous steps)
