@@ -652,7 +652,7 @@ def generate_pdbid_list (df,out_dir):
 
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
-parser = argparse.ArgumentParser(description="Generate the VCAb database")
+"""parser = argparse.ArgumentParser(description="Generate the VCAb database")
 parser.add_argument("--in_file",help="the input tsv file containing paired H and L chains from antibody PDBs, such as the csv file downloaded from SAbDab")
 args = parser.parse_args()
 
@@ -690,7 +690,7 @@ convert_seq_from_df_to_fasta(cHL,'H_coordinate_seq',"../seq_db/vcab_db")
 convert_seq_from_df_to_fasta(cHL,'L_seq',"../seq_db/vcab_db")
 convert_seq_from_df_to_fasta(cHL,'L_coordinate_seq',"../seq_db/vcab_db")
 
-# 1.2
+# 1.2 Identify isotypes and struc_coverage
 hfqseqs="../seq_db/vcab_db/H_seq.fasta"
 lfqseqs="../seq_db/vcab_db/L_seq.fasta"
 
@@ -740,14 +740,20 @@ ff_vcab.to_csv("new_vcab.csv")
 print ("Going through POPSComp analysis...")
 os.system("cd ../pops")
 os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
-os.system("cd -")
+os.system("cd -")"""
 
 # 3.2. Generate BLAST databases
 # generate fasta files
 print ("Generating BLAST databases...")
-#ff_vcab=pd.read_csv("new_vcab.csv").drop(columns="Unnamed: 0")
+ff_vcab=pd.read_csv("new_vcab.csv").drop(columns="Unnamed: 0")
 convert_seq_from_df_to_fasta(ff_vcab,'HV_seq',"../seq_db/vcab_db")
 convert_seq_from_df_to_fasta(ff_vcab,'LV_seq',"../seq_db/vcab_db")
+
+#Important: rewrite the H_seq.fasta and L_seq.fasta.
+# Previous files containing sequences in cHL are used to identify isotype & structural coverage.
+# Now we need to build the database only containing sequences from ff_vcab. Some entries are excluded from cHL, because they are find to only include V region, etc.
+convert_seq_from_df_to_fasta(ff_vcab,'H_seq',"../seq_db/vcab_db")
+convert_seq_from_df_to_fasta(ff_vcab,'L_seq',"../seq_db/vcab_db")
 os.system("cat ../seq_db/vcab_db/HV_seq.fasta ../seq_db/vcab_db/LV_seq.fasta > ../seq_db/vcab_db/all_v_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V region
 os.system("cat ../seq_db/vcab_db/H_seq.fasta ../seq_db/vcab_db/L_seq.fasta > ../seq_db/vcab_db/all_full_seq.fasta") # Combining two fasta files together to generate the fasta file containing all sequences of V + C region (full sequence)
 # make BLAST database. Note: BLAST should be installed on command line
