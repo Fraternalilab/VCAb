@@ -8,32 +8,32 @@ library (shinyhelper)
 library (ggplot2)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="new_vcab.csv"
+vcab_dir="../vcab_db/new_vcab.csv"
 pops_parent_dir <- "../pops/result/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
 # Directories of blast db:
 # ref db:
-igh_bl <- "./seq_db/ref_db/human_IGH_db/human_IGH.fasta"
+igh_bl <- "../seq_db/ref_db/human_IGH_db/human_IGH.fasta"
 # ref_IGH_seq from uniprot
-light_bl <- "./seq_db/ref_db/human_light_chain_db/human_light_constant.fasta"
+light_bl <- "../seq_db/ref_db/human_light_chain_db/human_light_constant.fasta"
 # ref_L_seq from uniprot
-all_ref_bl <- "./seq_db/ref_db/all_ref_db/all_ref.fasta"
+all_ref_bl <- "../seq_db/ref_db/all_ref_db/all_ref.fasta"
 # ref_db containing all the reference sequences
 
 # Blast db:
-VCAb_fseq_bl <- "./seq_db/vcab_db/HL_mixed_db/all_full_seq.fasta"
+VCAb_fseq_bl <- "../seq_db/vcab_db/all_full_seq.fasta"
 # all the full sequence from both H and L chains
-VCAb_vseq_bl <- "./seq_db/vcab_db/HL_mixed_db/all_v_seq.fasta"
+VCAb_vseq_bl <- "../seq_db/vcab_db/all_v_seq.fasta"
 # all the V region sequence from both H and L chains
 
-VCAbH_bl <- "./seq_db/vcab_db/H_full_db/H_full_seq.fasta"
+VCAbH_bl <- "../seq_db/vcab_db/H_seq.fasta"
 # all H_full_seq in VCAb
-VCAbL_bl <- "./seq_db/vcab_db/L_full_db/L_full_seq.fasta" 
+VCAbL_bl <- "../seq_db/vcab_db/L_seq.fasta" 
 # all L_full_seq in VCAb
-HV_bl <- "./seq_db/vcab_db/HV_full_db/HV_full_seq.fasta"
+HV_bl <- "../seq_db/vcab_db/HV_seq.fasta"
 # all HV seq in VCAb
-LV_bl <- "./seq_db/vcab_db/LV_full_db/LV_full_seq.fasta"
+LV_bl <- "../seq_db/vcab_db/LV_seq.fasta"
 # all LV seq in VCAb
 # Example: generate files required for the establishment of blast db:
 # makeblastdb("~/Desktop/antibody/human_IGH_db/human_IGH.fasta",dbtype="prot")
@@ -43,7 +43,7 @@ LV_bl <- "./seq_db/vcab_db/LV_full_db/LV_full_seq.fasta"
 o_vcab=read.csv(file=vcab_dir) # original vcab table
 vcab=o_vcab #[,c(32,2:4,18,19,41,37:39,6:16,33:36)]
 #Note: the positions of seqs:33:36
-vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
+#vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 
 
 ####################### Functions #######################
@@ -59,10 +59,11 @@ generate_blast_result <- function(o_seq,db_dir,suffix=""){
       aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
       seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
       
-      ## Don't need this step: the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
+      ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
       # Rank seq_pred
-      #seq_pred <- seq_pred[order(seq_pred$E,seq_pred$Perc.Ident,decreasing=TRUE),]
+      seq_pred <- seq_pred[order(seq_pred$Bits,decreasing=TRUE),]
       blast_df <- seq_pred[,2:12]
+      rownames(blast_df) <- NULL
       
       # generate the column of "iden_code"
       split_id <- function(i,sep){
@@ -147,7 +148,7 @@ check_uploaded_file <- function(f_path,seq_max=200){
 # Allow the user to upload their own fasta files
 uploaded_file_blast_unpaired <- function(f_path,region){
   # f_path: uploaded file path; # db_dir: the directory of the database used for blast
-  # region: the region of interest selected by the user, in order to select which database would be blasted against.
+  # region: the region of interest selected by the user(input$sele_bl_ab), in order to select which database would be blasted against.
   
   bl_db <- ifelse(region=="v_region", VCAb_vseq_bl, VCAb_fseq_bl)
   set <- readAAStringSet(f_path) # convert the file into a string set
@@ -443,7 +444,7 @@ ui <- fluidPage(
                         actionButton("search","Search"),
                         textOutput("chain_type_message"),
                         selectInput("file_col","Select the additional column(s) you want to display",
-                                    choices=colnames(vcab)[!colnames(vcab) %in% c('pdb','Hchain','Lchain','iden_code','Htype','Ltype','Structural.Coverage')], 
+                                    choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
                                     multiple=TRUE),
                         
                         downloadButton("download_subset",label="Download the searching result"),
@@ -515,7 +516,8 @@ ui <- fluidPage(
                  checkboxGroupInput(inputId = "stat", label="The statistics of VCAb based on:",
                               choices=c("Isotypes"="Htype",
                                         "Light chain types"="Ltype",
-                                        "Structural Coverage"="Structural.Coverage"))
+                                        "Structural Coverage"="Structural.Coverage")),
+                 uiOutput("total_ab_enties")
                ),
                mainPanel(
                  plotOutput("statistics_plt")
@@ -649,7 +651,7 @@ server <- function(input,output,session){
           
           # Find out which db should be used for blast:
           blast_v_db <- ifelse(input$seq_type == "Hseq",HV_bl,ifelse(input$seq_type == "Lseq",LV_bl,VCAb_vseq_bl)) # the v_seq db
-          #note: when the user select "unknow type" for V region seqs, it would blast against all the V seqs
+          #note: when the user select "unknown type" for V region seqs, it would blast against all the V seqs
           
           blast_f_db <- ifelse(input$seq_type == "Hseq",VCAbH_bl,ifelse(input$seq_type == "Lseq",VCAbL_bl,all_ref_bl)) # the full_seq db
           blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
@@ -672,7 +674,6 @@ server <- function(input,output,session){
             VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
             
             bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
-            ##### IMPORTANT: Avoid extract one ab_entry for multiple times
             
             new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
             rownames(new_bl_ab_df) <- NULL
@@ -1057,7 +1058,9 @@ server <- function(input,output,session){
   })
   
   ###### Statistics ############################################################################################
-  
+  output$total_ab_enties <- renderUI({
+    em(paste("In total, there are",as.character(nrow(vcab)),"antibody entries in VCAb."))
+    })
   output$statistics_plt <- renderPlot({
     in_value <- input$stat 
     
