@@ -13,11 +13,3 @@ To generate the VCAb shiny app, go to 'shiny' and run 'final_VCAb_shiny.R'.
 ### Note
 In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
 
-## Other Notes:
-Sequence: sequence directly downloaded from PDBe API
-
-Coordinate sequence: the sequence of residues with atomic coordinates, extracted directly from PDB files.
-
-V sequence: the sequence of V region
-
-Full sequence: the sequence covering both V region and C region
