@@ -13,3 +13,21 @@ To generate the VCAb shiny app, go to 'shiny' and run 'final_VCAb_shiny.R'.
 ### Note
 In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
 
+## Packages required 
+| file | Package |
+| ---- | ------- |
+|`generate_db.py`| pandas |
+|`generate_db.py`| numpy |
+|`generate_db.py`| Bio |
+|`generate_db.py`| argparse |
+|`generate_db.py`| os |
+|`generate_db.py`| warnings |
+|`final_VCAb_shiny.R`| shiny |
+|`final_VCAb_shiny.R`| DT |
+|`final_VCAb_shiny.R`| rBLAST |
+|`final_VCAb_shiny.R`| taxonomizr |
+|`final_VCAb_shiny.R`| NGLVieweR |
+|`final_VCAb_shiny.R`| tibble |
+|`final_VCAb_shiny.R`| shinyhelper |
+|`final_VCAb_shiny.R`| ggplot2 |
+|`final_VCAb_shiny.R`| dplyr |
