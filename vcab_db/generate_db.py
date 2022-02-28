@@ -652,7 +652,7 @@ def generate_pdbid_list (df,out_dir):
 
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
-"""parser = argparse.ArgumentParser(description="Generate the VCAb database")
+parser = argparse.ArgumentParser(description="Generate the VCAb database")
 parser.add_argument("--in_file",help="the input tsv file containing paired H and L chains from antibody PDBs, such as the csv file downloaded from SAbDab")
 args = parser.parse_args()
 
@@ -740,12 +740,12 @@ ff_vcab.to_csv("new_vcab.csv")
 print ("Going through POPSComp analysis...")
 os.system("cd ../pops")
 os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
-os.system("cd -")"""
+os.system("cd -")
 
 # 3.2. Generate BLAST databases
 # generate fasta files
 print ("Generating BLAST databases...")
-ff_vcab=pd.read_csv("new_vcab.csv").drop(columns="Unnamed: 0")
+#ff_vcab=pd.read_csv("new_vcab.csv").drop(columns="Unnamed: 0")
 convert_seq_from_df_to_fasta(ff_vcab,'HV_seq',"../seq_db/vcab_db")
 convert_seq_from_df_to_fasta(ff_vcab,'LV_seq',"../seq_db/vcab_db")
 
