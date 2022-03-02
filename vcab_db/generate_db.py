@@ -3,6 +3,7 @@ import numpy as np
 import requests
 from Bio.Blast.Applications import NcbiblastpCommandline as ncbiblp
 
+import Bio
 from Bio.PDB import StructureBuilder
 from Bio.PDB import PDBParser
 from Bio.PDB.PDBIO import PDBIO
@@ -42,7 +43,6 @@ def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, 
 def sabdab_filter (df):
     #filter out the pdbs contain not-paired Hchain or Lchain (H chain only or L chain only)
     # df: initial SAbDab table directly downloaded from SAbDab
-
     H_only=[]
     L_only=[]
 
@@ -62,7 +62,9 @@ def sabdab_filter (df):
     H_df=pd.DataFrame(H_only,columns=df.keys())
     L_df=pd.DataFrame(L_only,columns=df.keys())
 
-    return HL, H_df, L_df
+    new_HL=HL.sort_values(["pdb", "Hchain"], ascending = (True, True)).reset_index(drop=True)
+    return new_HL, H_df, L_df
+
 
 # download the author-seq directly from PDBe
 # The part to incorporate the seq_fragments to generate coordinate_seqs is deleted (in the comment), instead we extract coordinate sequence directly from pdb file
@@ -534,8 +536,8 @@ def generate_C_pdb_total (df,in_dir,out_dir):
     for i in df.index:
         try:
             pdb_c=df.loc[i,'iden_code']
-            h_vc=df.loc[i,'H_true_seq_VC_boundary']
-            l_vc=df.loc[i,'L_true_seq_VC_boundary']
+            h_vc=df.loc[i,'H_coordinate_seq_VC_boundary']
+            l_vc=df.loc[i,'L_coordinate_seq_VC_boundary']
 
             if os.path.exists(f"{out_dir}/{pdb_c}_C.pdb"):
                 continue
@@ -556,6 +558,7 @@ def generate_chain_pdb_total (df,in_dir,out_dir):
             l=pdb_c[6]
 
             if os.path.exists(f"{out_dir}/{pdb_c}.pdb"):
+                print (pdb_c)
                 continue
 
             parser = PDBParser()
