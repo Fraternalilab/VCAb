@@ -212,7 +212,8 @@ pops_result_file_name=paste0(out_dir, "/", str_split(inputPDB, ".pdb")[[1]][1],"
 
 if (file.exists(pops_result_file_name)==FALSE){
   newpopscompR(inputPDB_file_name,inDir=args[2],outDir = out_dir)
-  system("rm ./result/!(*deltaSASA_rpopsResidue.txt)") # only keep the *deltaSASA_rpopsResidue.txt file
+  setwd("result")
+  system("for file in $(ls | grep -v deltaSASA_rpopsResidue); do rm $file; done") # only keep the *deltaSASA_rpopsResidue.txt file
 }
 
   
