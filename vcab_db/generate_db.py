@@ -741,9 +741,9 @@ ff_vcab.to_csv("new_vcab.csv")
 # 3. Generate files for the shiny app:
 # 3.1. Generate POPSComp results
 print ("Going through POPSComp analysis...")
-os.system("cd ../pops")
+os.chdir("../pops")
 os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
-os.system("cd -")
+os.chdir("../vcab_db")
 
 # 3.2. Generate BLAST databases
 # generate fasta files
