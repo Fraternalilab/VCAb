@@ -314,10 +314,10 @@ generate_pops_info <- function(pdb_c){
 ui <- fluidPage(
   titlePanel(title=div(img(
     src="./VCAb_logo.png",
-    width = 270, height = 80#,
-    #style = "margin 5px 5px"
+    width = 270, height = 80
   ),
-  "V and C region bearing Antibody Database")),
+  "V and C region bearing Antibody Database"),
+  windowTitle = "VCAb antibody database"),
   navbarPage("",
     tabPanel("Search",
              fluidRow(
@@ -749,6 +749,7 @@ server <- function(input,output,session){
   })
   
   # Make the ab_info_df downloadable for users
+  
   output$download_subset <- downloadHandler(
     filename = function(){
       o_time=Sys.time()
@@ -756,13 +757,29 @@ server <- function(input,output,session){
       o2 <- gsub(":","",o1)
       o3 <- gsub("-","",o2)
       final_time <- o3
-      paste("vcab_user_search_",final_time,".csv",sep="")
+      paste0("vcab_user_search_",final_time,".zip")
     },
-    content=function(file){
+    content=function(f_name){
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      # The result table:
       search_result <- ab_info$ab_info_df[!(names(ab_info$ab_info_df) %in% c("Structure"))] # exclude the "Structure" Column
       colnames(search_result) <- stringr::str_replace_all(colnames(search_result),"<br>","\\.")
-      write.csv(search_result,file)
-    }
+      table_name <- "vcab_user_search_result_table.csv"
+      write.csv(search_result,file.path(temp_directory,table_name))
+      
+      # PDB files:
+      pdb_dir=dir.create(file.path(temp_directory,"chain_pdb"))
+      for (i in ab_info$ab_info_df["iden_code"]){
+        pdb_name<-paste0(i,".pdb")
+        #file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,pdb_name))
+        file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,"chain_pdb",pdb_name))
+      }
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
   )
   
   # Replace the "." with <br> to allow the col header change to a new line
@@ -1000,7 +1017,7 @@ server <- function(input,output,session){
       paste(pdb_dir_val$iden_code,"_",final_time,".pdb",sep="")
     },
     content=function(file){
-      write.csv(pdb_dir_val$dir,file)
+      file.copy(pdb_dir_val$dir,file)
     }
   )
   
