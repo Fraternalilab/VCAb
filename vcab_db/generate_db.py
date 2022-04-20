@@ -1,3 +1,6 @@
+# To generate the VCAb database
+# Dongjun Guo
+
 import pandas as pd
 import numpy as np
 import requests
@@ -8,6 +11,7 @@ from Bio.PDB import StructureBuilder
 from Bio.PDB import PDBParser
 from Bio.PDB.PDBIO import PDBIO
 from Bio.SeqUtils import seq1
+from Bio import SeqIO
 
 import os
 import argparse
@@ -241,40 +245,48 @@ def convert_seq_from_df_to_fasta (df,col_name,out_dir):
     for i in df.index:
         full_name='>'+df.loc[i,'iden_code']+'-'+col_name
         seq=df.loc[i,col_name]
-        file.write(full_name+'\n')
-        file.write(seq+'\n')
+        if type(seq)==str:
+            file.write(full_name+'\n')
+            file.write(seq+'\n')
     file.close()
 
 ######################## 1.2 Generate vcab (identify isotype, light chain type, structural coverage) except the VCB in the PDB file ########################
-chain_type_names={'sp|P01857|IGHG1_HUMAN':"IgG1",
-                 'sp|P01859|IGHG2_HUMAN':"IgG2",
-                 'sp|P01860|IGHG3_HUMAN':"IgG3",
-                 'sp|P01861|IGHG4_HUMAN':"IgG4",
-                  'sp|P01876|IGHA1_HUMAN':"IgA1",
-                  'sp|P01877|IGHA2_HUMAN':"IgA2",
-                  'sp|P01871|IGHM_HUMAN':"IgM",
-                  'sp|P01880|IGHD_HUMAN':"IgD",
-                  'sp|P01854|IGHE_HUMAN':"IgE",
-                'sp|A0M8Q6|IGLC7_HUMAN':"IgLC7",
-                 'sp|P01834|IGKC_HUMAN':"IgKC",
-                 'sp|P0CF74|IGLC6_HUMAN':"IgLC6",
-                 'sp|P0CG04|IGLC1_HUMAN':"IgLC1",
-                 'sp|P0DOY2|IGLC2_HUMAN':"IgLC2",
-                 'sp|P0DOY3|IGLC3_HUMAN':"IgLC3"
+chain_type_names={'IGHG1':"IgG1",
+                 'IGHG2':"IgG2",
+                 'IGHG3':"IgG3",
+                 'IGHG4':"IgG4",
+                  'IGHA1':"IgA1",
+                  'IGHA2':"IgA2",
+                  'IGHM':"IgM",
+                  'IGHD':"IgD",
+                  'IGHE':"IgE",
+                'IGLC7':"lambda",
+                 'IGKC':"kappa",
+                 'IGLC6':"lambda",
+                 'IGLC1':"lambda",
+                 'IGLC2':"lambda",
+                 'IGLC3':"lambda"
                  }
 
-# Structural Coverage Definition (from uniprot)
-CHs_in_igs={}
-CHs_in_igs['IgG1']=[(1,98),(99,110),(111,223),(224,330),'']
-CHs_in_igs['IgG2']=[(1,98),(99,110),(111,219),(220,326),'']
-CHs_in_igs['IgG3']=[(1,98),(99,160),(161,270),(271,376),'']
-CHs_in_igs['IgG4']=[(1,98),(99,110),(111,220),(221,327),'']
-CHs_in_igs['IgA1']=[(6,98),'',(125,220),(228,330),'']
-CHs_in_igs['IgA2']=[(6,98),'',(112,207),(215,317),'']
-CHs_in_igs['IgM']=[(1,105),'',(106,217),(218,323),(324,452)]
-CHs_in_igs['IgD']=[(6,98),'',(175,263),(267,373),'']
-CHs_in_igs['IgE']=[(6,103),'',(112,210),(214,318),(324,423)]
-domains=pd.DataFrame(CHs_in_igs,index=['CH1','hinge','CH2','CH3','CH4'])
+# Collect the domain information
+imgt_h_original="../seq_db/ref_db/all_alleles/H_chains/imgt_original.fasta"
+h_domains={}
+for record in SeqIO.parse(imgt_h_original,"fasta"):
+    title_lst=record.description.split("|")
+
+    allele_name=title_lst[1]
+    if_partial=title_lst[13]# if the allele sequence only contains a fragment
+    domain_name=title_lst[4]
+    domain_seq_len=int(title_lst[11][0:-3])
+
+    if allele_name not in h_domains.keys():
+        d_counter=domain_seq_len
+        h_domains[allele_name]={domain_name:[(1,domain_seq_len),d_counter,if_partial]}
+    else:
+        last_val=list(h_domains[allele_name].values())[-1]
+        previous_d_counter=last_val[1]
+        d_counter=domain_seq_len
+        h_domains[allele_name][domain_name]=[(1+previous_d_counter,domain_seq_len+previous_d_counter),d_counter+previous_d_counter,if_partial]
 
 def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
     # creat the blastp command line
@@ -288,53 +300,80 @@ def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
     # Modify the bl_result
     df=bl_result.copy() # no specific reason, just want to type fewer characters/or in case I want to output the initial bl_result
     df["iden_code"]=list(map(lambda x: x.split("-")[0],df["qseqid"]))
-    df["chain_type"]=list(map(lambda x: chain_type_names[x],df["sseqid"])) # In the format of "IgG1"
+
+    df["chain_type"]=list(map(lambda x: chain_type_names[x.split("*")[0]],df["sseqid"])) # In the format of "IgG1"
+    df["matched_alleles"]=list(df["sseqid"]) # In the format of "IgG1"
     return df
 
 def get_chain_type_VCB (iden_code,df):
     # df: the bl result of the full seqs, could be the bl results of H or L chain
     # note: for L chain: the returned type is the LSubtype
-    # return 1. chain type of the seq; 2.the VC_Boundary of the sequence (author-submitted sequence)
+    # return 1. chain type of the seq; 2. alternative chain type of the seq (the same score with the best hit); 3.the VC_Boundary of the sequence (author-submitted sequence)
     hit_info=df.loc[df["iden_code"]==iden_code]
-    best_hit_info=hit_info.iloc[0,]
+    hit_info=hit_info.reset_index(drop=True)
 
-    chain_type=best_hit_info["chain_type"]
-    VCB=best_hit_info["start_ab"]
-    return chain_type,VCB
+    # Best match:
+    best_hit_df=hit_info.iloc[0,]
+    best_chain_type=best_hit_df["chain_type"]
 
-def aligned_to (start,end,d_name,ig):
+    allele=best_hit_df["matched_alleles"]
+    ident=best_hit_df["ident"]
+    best_hit_info=f"{best_chain_type}({allele}, Per. Ident: {ident})"
+
+    best_score=best_hit_df["score"]
+    VCB=best_hit_df["start_ab"]
+
+    # Alternative match:
+    alternative_hit_df=hit_info.loc[hit_info["score"]==best_score]
+    alternative_hit_info=""
+    #return alternative_hit_df
+    for i in alternative_hit_df.index:
+        if i == 0:
+            # skip the best results
+            continue
+        elif len(alternative_hit_df) != 0:
+            a_chain_type=alternative_hit_df.loc[i,"chain_type"]
+            a_allele=alternative_hit_df.loc[i,"matched_alleles"]
+            a_ident=alternative_hit_df.loc[i,"ident"]
+            if a_chain_type != best_chain_type:
+                # exclude the cases with the same chain type but different alleles
+                alternative_hit_info+=f"{a_chain_type}({a_allele}, Per. Ident: {a_ident}) "
+
+    return best_hit_info,alternative_hit_info,VCB
+
+def aligned_to (start,end,d_name,allele):
     # return the aligned coverage for certain domain in specific Ig
-    # start and end point of the aligned region in the standard isotype (uniprot)
+    # start & end: start and end positions of the aligned region in the ref_seq in the blast aln result
     # d_name:domain name ('CH1',etc.)
-    # ig:ig_name, 'igg1',etc
+    # allele: allele_name (e.g. IGHG1*01)
 
-    d_region=domains[ig][d_name] #domain region
-    if d_region == '':
-        return d_name + ': not defined region'
+    d_region=h_domains[allele][d_name][0] #domain boundary
+
+    a=d_region[0] # d_region start
+    b=d_region[1] # d_region end
+    overlapped_region=()
+    overlapped_perc=0
+    if b<start or end<a:
+        return 'no overlap'
     else:
-        a=d_region[0] # d_region start
-        b=d_region[1] # d_region end
-        overlapped_region=()
-        overlapped_perc=0
-        if b<start or end<a:
-            return 'no overlap'
-        else:
-            ordered=sorted([a,b,start,end])
-            med_small=ordered[1]
-            med_large=ordered[2]
+        ordered=sorted([a,b,start,end])
+        med_small=ordered[1]
+        med_large=ordered[2]
 
-            overlapped_region=(med_small,med_large)
-            overlapped_perc_domains=((med_large-med_small)/(b-a))*100
-            overlapped_perc_protein=((med_large-med_small)/(end-start))*100
-            return [d_name,overlapped_perc_domains,overlapped_perc_protein]
+        overlapped_region=(med_small,med_large)
+        overlapped_perc_domains=((med_large-med_small)/(b-a))*100
+        overlapped_perc_protein=((med_large-med_small)/(end-start))*100
+        return [d_name,overlapped_perc_domains,overlapped_perc_protein]
 
 def get_struc_cov_coor_VCB (iden_code,ig,df):
     # Note: df must be the bl result of the true seqs (coordinate seqs)
-    # return: 1. align_info; 2.Structural Coverage; 3.VC_Boundary of the true sequence
-    # iden_code: pdb_HL; ig: the isotype of the antibody
+    # return: 1. align_info; 2.Structural Coverage; 3.VC_Boundary of the coor sequence
+    # df: the bl_result of the coordinate sequence
+    # iden_code: pdb_HL; ig: the isotype/light chain type of the antibody
 
     true_hit_info=df.loc[df["iden_code"]==iden_code]
     best_true_hit_info=true_hit_info.iloc[0,]
+    hit_allele=best_true_hit_info["matched_alleles"] # the matched allele of the isotype
 
     # Get the true_VCB info
     true_VCB=best_true_hit_info["start_ab"]
@@ -345,22 +384,34 @@ def get_struc_cov_coor_VCB (iden_code,ig,df):
         s,e=best_true_hit_info["start_ref"],best_true_hit_info["end_ref"]
         s_t,e_t=best_true_hit_info["start_ab"],best_true_hit_info["end_ab"]#start and end point of the aligned region in the target antibody
 
-        regions=list(domains.index)
+
+        regions=[i for i in h_domains[hit_allele].keys() if "M" not in i]
+
         align_info=[(s_t,e_t),(s,e)]
+        displayed_align_info=[]
 
         for r in regions:
-            subresult=aligned_to (s,e,r,ig)
-            if type(subresult)== list:
-                align_info.append(subresult)
+            subresult=aligned_to (s,e,r,hit_allele)
+            if type(subresult)!= str:
+                if subresult[1:] !=[0,0]:
+                    sub_string=f"{subresult[0]}(covers {subresult[1]}% of {subresult[0]}, accounts for {subresult[2]}% of the H_coor_seq)"
+                    displayed_align_info.append(sub_string)
+                    align_info.append(subresult)
 
         # Get the struc_cov
-        ig_d=[d for d in domains.index if domains [ig][d]!=''] # the domain list for the whole antibody
-        pro_d=[a[0] for a in align_info[2:]] # the domain list for this antibody
-        domain_info=",".join(pro_d)
+        ig_d=[i for i in h_domains[hit_allele].keys() if "M" not in i]
+        # the domain list for the ref_seq
+        pro_d=[a[0] for a in align_info[2:]]
+        # the domain list for this antibody
+        domain_info="; ".join(displayed_align_info)
         if true_VCB > 70:
-            if ig_d==pro_d:
+            if pro_d[0]!="CH1":
+                struc_cov = 'not classified'
+                # mostly: structure contains only V region and is forced to align with C region
+                # other cases: 1za6 (CH2 deleted)
+            elif ig_d==pro_d:
                 struc_cov = 'full antibody'
-            elif pro_d==['CH1'] or pro_d==['CH1','hinge']:
+            elif ("CH3" not in pro_d) and ("CH3-CHS" not in pro_d):
                 struc_cov = 'Fab'
             else:
                 struc_cov = 'not classified'
@@ -381,6 +432,27 @@ def get_v_c_seqs (seq, vcb, v_or_c):
     else:
         return seq[vcb-1:]
 
+def get_carbohydrate_info_from_pdbe(pdb):
+    URL= 'https://www.ebi.ac.uk/pdbe/api/'
+    n_pdb=pdb.lower()
+    ligand_data=requests.get(URL+'pdb/entry/carbohydrate_polymer/'+n_pdb)
+    if ligand_data.status_code==200:
+        result={}
+        ligand_info=ligand_data.json()[n_pdb]
+        for l_dict in ligand_info:
+            l_name=l_dict['molecule_name']
+            l_chain_id=l_dict['in_chains']
+            if l_name not in result.keys():
+                result[l_name]=[]
+            result[l_name]+=l_chain_id
+        result2={k:"".join(v) for k,v in result.items()}
+        result_str="; ".join([f"{k} (chain_id:{v})" for k,v in result2.items()])
+        return result_str
+
+
+    else:
+        return ""
+
 def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
     #o_df: the df table from sabdab
     # hfbl & lfbl: the bl_results of the seqs of H & L chains
@@ -397,6 +469,10 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
     Htype=[]
     Ltype=[]
     LSubtype=[]
+    alter_Htype=[]
+    alter_Ltype=[]
+    sugar_info=[]
+
     aln_info=[]
     domain_info=[]
     struc_cov=[]
@@ -414,20 +490,24 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
 
     for i in df.index:
         iden_code=df.loc[i,"iden_code"]
+        pdb_code=df.loc[i,"pdb"]
+        carbohydrate=get_carbohydrate_info_from_pdbe(pdb_code)
 
         try:
-            this_h_type,this_hf_vcb=get_chain_type_VCB (iden_code,hfbl)
-            this_l_subtype,this_lf_vcb=get_chain_type_VCB (iden_code,lfbl)
+            this_h_info,this_alter_h_info,this_hf_vcb=get_chain_type_VCB (iden_code,hfbl)
+            this_l_info,this_alter_l_info,this_lf_vcb=get_chain_type_VCB (iden_code,lfbl)
         except:
-            this_h_subtype,this_hf_vcb=("","")
-            this_l_subtype,this_lf_vcb=("","")
+            this_h_info,this_alter_h_info,this_hf_vcb=("","","")
+            this_l_info,this_alter_l_info,this_lf_vcb=("","","")
             print (iden_code)
 
-        # get the Ltype:
-        if this_l_subtype=="IgKC":
-            this_l_type="kappa"
-        else:
-            this_l_type="lambda"
+        this_h_type=this_h_info.split("(")[0]
+        this_l_type=this_l_info.split("(")[0]
+        try:
+            this_l_subtype=this_l_info.split("(")[1].split("*")[0]
+        except:
+            print(f"error:line504:{iden_code} \n {this_l_info} \n {this_l_type}")
+            this_l_subtype=""
 
         try:
             this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb=get_struc_cov_coor_VCB (iden_code,this_h_type,htbl)
@@ -435,9 +515,15 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
         except:
             this_aln_info,this_struc_cov,this_ht_vcb,this_lt_vcb,this_domain_info=("unidentified","unidentified","unidentified","unidentified","unidentified")
 
-        Htype.append(this_h_type)
-        Ltype.append(this_l_type)
+
+        Htype.append(this_h_info)
+        Ltype.append(this_l_info)
         LSubtype.append(this_l_subtype)
+
+        alter_Htype.append(this_alter_h_info)
+        alter_Ltype.append(this_alter_l_info)
+        sugar_info.append(carbohydrate)
+
         hvcb_full.append(this_hf_vcb)
         lvcb_full.append(this_lf_vcb)
 
@@ -450,6 +536,10 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
     df["Htype"]=Htype
     df["Ltype"]=Ltype
     df["LSubtype"]=LSubtype
+    df["Alternative_Htype"]=alter_Htype
+    df["Alternative_Ltype"]=alter_Ltype
+    df["carbohydrate_polymer"]=sugar_info
+
     df["align_info"]=aln_info
     df["Domains in HC"]=domain_info
     df["Structural Coverage"]=struc_cov
@@ -498,7 +588,7 @@ def keep_constant_domain (chain,v_c):
     # since I use "c" to count residues, not the residue number written in pdb, true_V_C_boundary is used for cutting C region
     residue_to_remove = []
     for c,r in enumerate(chain):
-        if (c+1<v_c) or (r.id[0]!=' '):
+        if (c+1<v_c) or (r.id[0]!=' '): #r.id is in this format(' ',num,' '), for normal amino acid, r.id[0] is ' '
             residue_to_remove.append(r.id)
     for residue in residue_to_remove:
         chain.detach_child(residue)
@@ -653,6 +743,65 @@ def generate_pdbid_list (df,out_dir):
     with open(f'{out_dir}/pdbid_lst.txt','w') as output:
         output.write(','.join(pdbid))
 
+########################## 3.3 Calculate the disulfide bond ##########################
+def calc_dis_between_cys (iden_code,c_pdb_dir):
+    # cat_chain: concatenated chain object of the H and L chain
+    parser=Bio.PDB.PDBParser()
+    structure=parser.get_structure(iden_code,f"{c_pdb_dir}/{iden_code}_C.pdb")
+    h,l=iden_code.split("_")[1]
+    h_obj=structure[0][h]
+    l_obj=structure[0][l]
+
+    cat_chain=Bio.PDB.Chain.Chain("n")
+    for res in h_obj:
+        cat_chain.add(res)
+    for res in l_obj:
+        id_lst=list(res.id)
+        res.id=(id_lst[0],id_lst[1]+3000,id_lst[2])
+        cat_chain.add(res)
+
+    result=[]
+    for counter,res1 in enumerate(cat_chain):
+        res1_name=res1.resname
+        for res2 in list(cat_chain)[counter+1:]:
+            # to exlude the cases like CYS155(H)-CYS211(H),CYS211(H)-CYS155(H)
+            res2_name=res2.resname
+
+            if res1_name=="CYS" and res2_name=="CYS":
+                diff_vector=res1["CA"].coord-res2["CA"].coord
+                dist=np.linalg.norm(diff_vector)
+
+                if dist<=7.5:
+                    res1_id=res1.id[1]
+                    res2_id=res2.id[1]
+
+                    chain1=h
+                    chain2=h
+                    if res1_id>3000:
+                        chain1=l
+                        res1_id-=3000
+                    if res2_id>3000:
+                        chain2=l
+                        res2_id-=3000
+
+                    display_dist='%.2f' % round(dist, 2)
+                    result.append(f"{res1_name}{res1_id}({chain1})-{res2_name}{res2_id}({chain2}):{display_dist}")
+    return ", ".join(result)
+
+def add_disulfide_info(df,c_pdb_dir):
+    disulfide_info=[]
+    for i in df.index:
+        iden_code=df.loc[i,"iden_code"]
+        try:
+            disulfide_val=calc_dis_between_cys (iden_code,c_pdb_dir)
+        except:
+            disulfide_val=""
+        disulfide_info.append(disulfide_val)
+    df["disulfide_bond"]=disulfide_info
+    return df
+
+
+
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
 parser = argparse.ArgumentParser(description="Generate the VCAb database")
@@ -700,8 +849,8 @@ lfqseqs="../seq_db/vcab_db/L_seq.fasta"
 htqseqs="../seq_db/vcab_db/H_coordinate_seq.fasta"
 ltqseqs="../seq_db/vcab_db/L_coordinate_seq.fasta"
 
-h_ref_db="../seq_db/ref_db/human_IGH_db/human_IGH.fasta"
-l_ref_db="../seq_db/ref_db/human_light_chain_db/human_light_constant.fasta"
+h_ref_db="../seq_db/ref_db/all_alleles/H_chains/unique_alleles.fasta"
+l_ref_db="../seq_db/ref_db/all_alleles/L_chains/unique_light_alleles.fasta"
 
 hbl=generate_bl_result (hfqseqs,h_ref_db,"h_seq_bl","./blast_result")
 lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
@@ -735,7 +884,7 @@ if (len(err)>0):
 # 2.3 ADD full seqs of V and C
 ff_vcab=get_V_C_seq(vcab_pdb_vcb)
 ff_vcab=ff_vcab.reset_index(drop=True)
-
+ff_vcab=add_disulfide_info(ff_vcab,"../pdb_struc/c_pdb/")
 ff_vcab.to_csv("new_vcab.csv")
 
 # 3. Generate files for the shiny app:
