@@ -303,6 +303,7 @@ def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
 
     df["chain_type"]=list(map(lambda x: chain_type_names[x.split("*")[0]],df["sseqid"])) # In the format of "IgG1"
     df["matched_alleles"]=list(df["sseqid"]) # In the format of "IgG1"
+    df.to_csv(f"{out_dir}/{bl_out_name}_result.csv")
     return df
 
 def get_chain_type_VCB (iden_code,df):
