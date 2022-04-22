@@ -161,7 +161,8 @@ def get_loops_pdb_boundary (iden_code,chainType,dssp_dir,df):
     sub_df=df.loc[df["iden_code"]==iden_code]
 
     coor_seq=sub_df['H_coordinate_seq'].item() # Note: the query seq contains both V and C
-    c_type=sub_df['Htype'].item()
+    c_info=sub_df['Htype'].item()
+    c_type=c_info.split("(")[0]
     if chainType.lower()=="l":
         coor_seq=sub_df['L_coordinate_seq'].item()
         c_type=sub_df['LSubtype'].item()
