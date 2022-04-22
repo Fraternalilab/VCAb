@@ -270,6 +270,7 @@ c_pdb_dir="../pdb_struc/c_pdb/"
 pops_dir="../pops/result"
 
 mtrx_out_dir="../ch1_cl_interface_matrix/matrix_results/"
+os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
 
 int_mtrx_not_calculated=[]
 for i in vcab.index:
