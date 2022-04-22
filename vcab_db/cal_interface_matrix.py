@@ -287,7 +287,7 @@ with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
 # Calculate the distance matrix of dm (matrix of the interface distance index)
 flt_vcab=exclude_mtrx_not_calculated(vcab,"../ch1_cl_interface_matrix/mtrx_not_calculated.txt")
 # exclude the VCAb entries with no interface matrix (mainly because the POPSComp result is not available for the solution scattering method)
-dm,ab_info_label=generate_dm_of_interface_dm(df,mtrx_dir)
+dm,ab_info_label=generate_dm_of_interface_dm(df,mtrx_out_dir)
 np.savetxt(f"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.txt",dm,fmt='%10.5f')
 
 dm_df=pd.DataFrame(dm,columns=[ab_info_label[k][0] for k in ab_info_label.keys()])
