@@ -1,3 +1,6 @@
+# To calculate the elbow angles and the CH1-CL angle
+# Dongjun Guo, Apr.2022
+
 import Bio.PDB
 from Bio import AlignIO
 from Bio import pairwise2
