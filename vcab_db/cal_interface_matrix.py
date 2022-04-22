@@ -1,3 +1,6 @@
+# To calculate the interface difference index and generate a mtrix holding this value
+# Dongjun Guo, Apr.2022
+
 import numpy as np
 import pandas as pd
 import Bio.PDB
