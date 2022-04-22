@@ -337,7 +337,7 @@ if __name__=="__main__":
     vcab=pd.read_csv("./new_vcab.csv").drop(columns=["Unnamed: 0"])
     os.system("sh ../dssp/run_dssp.sh")
 
-    ref_seq_db=json.load(open("./ref_Seq_info.json","r"))
+    ref_seq_db=json.load(open("./ref_seq_info.json","r"))
     ref_seq_loop_anchor_site_pure_pos=json.load(open("./ref_seq_loops_ref_points.json","r"))
     dssp_dir="../dssp/dssp_results"
     pdb_dir="../pdb_struc/chain_pdb"
