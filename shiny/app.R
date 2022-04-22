@@ -8,9 +8,13 @@ library (shinyhelper)
 library (ggplot2)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/new_vcab.csv"
+#vcab_dir="../vcab_db/new_vcab.csv"
+vcab_dir="~/Documents/vcab/vcab_db/combined_vcab_for_testing.csv"
+#vcab_dir="~/Documents/vcab_test/vcab_db/new_vcab.csv"
 pops_parent_dir <- "../pops/result/"
+f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
+
 
 # Directories of blast db:
 # ref db:
@@ -38,12 +42,26 @@ LV_bl <- "../seq_db/vcab_db/LV_seq.fasta"
 # Example: generate files required for the establishment of blast db:
 # makeblastdb("~/Desktop/antibody/human_IGH_db/human_IGH.fasta",dbtype="prot")
 
+# Files required to plot the seq_cov plot
+dom_info_dir="../seq_db/ref_db/all_alleles/H_chains/h_alleles_domain_info.csv"
+total_dom_info=read.csv(dom_info_dir)
+total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
+
+h_author_seq_bl_dir="../vcab_db/blast_result/h_seq_bl_result.csv"
+h_coor_seq_bl_dir="../vcab_db/blast_result/h_coordinate_seq_bl_result.csv"
+t_h_author_bl=read.csv(h_author_seq_bl_dir)
+t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
+
+# Files required to rank the antibody according to interface similarity:
+## dm stands for distance matrix: the matrix holding the interface difference index value
+dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
+dm_df=read.csv(dm_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
-vcab=o_vcab #[,c(32,2:4,18,19,41,37:39,6:16,33:36)]
+vcab=o_vcab[,!(names(o_vcab) %in% c("X"))] #[,c(32,2:4,18,19,41,37:39,6:16,33:36)]
 #Note: the positions of seqs:33:36
-#vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
+##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 
 
 ####################### Functions #######################
@@ -228,24 +246,31 @@ uploaded_file_blast_paired <- function (f_path,region){
   return (list("paired_bl"=bl_result,"unpaired"=unpaired_seqs))
 }
 
-# Extract the entry with the same iden_code in the best-fit blast result
+# Extract the entry with the same iden_code in the vcab table
 extract_entry <- function(title,df){
   name <- strsplit(title,"-")[[1]][1]
   return (df %>% dplyr::filter(iden_code==name))
 }
 
 # Filter the table by features (attributes)
-filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,df=vcab){
+filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_antigen,df=vcab){
   # select the rows to be displayed
   # return a set of TRUE/FALSE value
   
   # all the inputs of this function are the input: e.g. iso_txt should be in this format: input$iso_txt
+  chain_type_filter <- function(col_name,user_input){
+    if (user_input=="All") TRUE else unlist(lapply(df[[col_name]],function(x){strsplit(x,"\\(")[[1]][1]==user_input}))
+  }
   select_filter <- function(check_col_name,select_input_value){
     # check_col_name: the name of the column in the table to be checked / the column which serves as the filter standard
     # o_select_input_value: the value inputted by the user, e.g. input$iso_txt
     if(select_input_value=="All") TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
   }
-  first_filter <- select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)
+  
+  antigen_filter <- function(){
+    if (if_antigen=="Any") TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
+  }
+  first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
   final_filter <- if (is.na(res_cut)) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
   
   return (final_filter)
@@ -286,6 +311,7 @@ generate_total_info <- function(bl_df,ns){
   # use cbind() instead of merge to preserve the original blast order, since merge() would be order the df by the "by" col
   #bl_ab_df <- merge(bl_df,ab_info_df,by="iden_code")
   bl_ab_df <- cbind(bl_df,final_ab_info_df)
+  return(bl_ab_df)
 }
 
 generate_pops_info <- function(pdb_c){
@@ -310,6 +336,116 @@ generate_pops_info <- function(pdb_c){
   return (list("hpops"=hpops,"lpops"=lpops))
 }
 
+get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_bl,df=vcab){
+  # horltype should be only "Htype" or "Ltype"
+  ctype=df[df$iden_code==iden_code,horltype]
+  allele_info=strsplit(ctype,"\\(")[[1]][2]
+  allele=strsplit(allele_info,",")[[1]][1]
+  
+  # (1) annotation of domain starts/end points of the reference allele
+  dom_positions = ref_dom[ref_dom$q==allele,]
+  rownames(dom_positions) <- NULL
+  
+  ref_start=head(dom_positions,n=1)$a
+  ref_end=tail(dom_positions,n=1)$b
+  
+  # (2) annotation of the coverage of reference / author sequence / coordinate sequence
+  author_hit_info=head(t_author_bl[(t_author_bl$iden_code==iden_code)&(t_author_bl$matched_alleles==allele),],n=1)
+  coor_hit_info=head(t_coor_bl[(t_coor_bl$iden_code==iden_code)&(t_coor_bl$matched_alleles==allele),],n=1)
+  
+  author_start=author_hit_info$start_ref
+  author_end=author_hit_info$end_ref
+  coor_start=coor_hit_info$start_ref
+  coor_end=coor_hit_info$end_ref
+  
+  coverage_pos <- data.frame(
+    a = c(ref_start, author_start, coor_start), b = c(ref_end, author_end, coor_end), # start and end
+    q = c(allele, 'author', 'coords') # indicate sequence type
+  )
+  
+  # order the sequence type annotation for the plot
+  dom_positions$q <- factor(dom_positions$q, 
+                            levels = c(allele, 'author', 'coords'),
+                            labels = c(paste0('reference\n',allele), 
+                                       'author-submitted\nsequence (HC)',
+                                       'atomic\ncoordinate (HC)'))
+  coverage_pos$q <- factor(coverage_pos$q, 
+                           levels = c(allele, 'author', 'coords'),
+                           labels = c(paste0('reference\n',allele), 
+                                      'author-submitted\nsequence (HC)',
+                                      'atomic\ncoordinate (HC)'))
+  
+  #return (list("dom_pos"=dom_positions,"cov_pos"=coverage_pos))
+  # determine the positions of domain labels (text on the reference allele bar)
+  dom_positions$label_pos <- apply(dom_positions[, c("a", "b")], MARGIN = 1, mean)
+  
+  #_________________________________________________
+  # the ggplot2 functions
+  
+  
+  prepare_plot <- function(tb)
+  {
+    # prepare the ggplot canvas
+    ggplot(tb, aes(xmin = a, xmax = b, y = q)) + 
+      scale_y_discrete(drop = FALSE, name = "") +
+      scale_x_continuous(labels = seq(1, ref_end, by = 100), name = "AA position",
+                         breaks = seq(1, ref_end, by = 100)) + theme_bw()
+  }
+  
+  draw_coverage <- function(tb, start_column_name, end_column_name, y_column_name)
+  {
+    # draw the structural coverage (ie the lighter colour bars)
+    # start_column_name and end_column_name corresponds to start/end points
+    # of each sequence type (ref / coords/ author)
+    # y_column_name is the column that indicate ref/coords/author
+    geom_rect(data = tb, 
+              aes_string(xmin = start_column_name, xmax = end_column_name),
+              ymin = as.numeric(tb[, y_column_name]) - 0.1,
+              ymax = as.numeric(tb[, y_column_name]) + 0.1,
+              fill = "grey80")
+  }
+  
+  draw_dom_position <- function(tb, y_column_name)
+  {
+    # draw the domain boundaries with dark coloured rectangles
+    # y_column_name refers to ref/author/coords (all should be 'ref'! - 
+    # just so that ggplot2 knows on which horizontal line to put the rect)
+    geom_rect(ymin = as.numeric(tb[, y_column_name]) - 0.1,
+              ymax = as.numeric(tb[, y_column_name]) + 0.1) 
+  }
+  
+  # actual plotting
+  g <- prepare_plot(dom_positions)
+  g <- g + draw_coverage(coverage_pos, start_column_name = "a",
+                         end_column_name = "b", y_column_name = "q")
+  g <- g + draw_dom_position(dom_positions, "q")
+  g <- g + geom_text(aes(label = dom, x = label_pos), colour = "white")
+  g <- g + theme(axis.text = element_text(size = 12))
+  # 'g' is the ggplot2 object to be rendered/printed:
+  return (g)
+  
+}
+
+get_similar_interface <- function(iden_code,dm_df){
+  sub_df_row=dm_df[dm_df$X==iden_code,!(names(dm_df) %in% c("X"))]
+  rownames(sub_df_row) <- NULL
+  t_sub_df_row=t(sub_df_row) # first extract the rows, then transpose the df into column
+  rownames(t_sub_df_row) <- lapply(rownames(t_sub_df_row),function(x){substring(x,2)})
+  colnames(t_sub_df_row) <- c("row_extraction")
+  
+  sub_df_col=data.frame(col_extraction=dm_df[,paste0("X",iden_code)])
+  rownames(sub_df_col) <- dm_df$X
+  
+  sub_df <- cbind(t_sub_df_row,sub_df_col) # combine the distance listed in the row (iden_code) and col(Xiden_code)
+  sub_df$interface_difference_index <- apply(sub_df,1,max) # The max value of the row_extraction and col_extraction is the interface_diff_index
+  similar_interface_df <- head(sub_df[order(sub_df$interface_difference_index),],11)
+  similar_interface_df$iden_code <- rownames(similar_interface_df)
+  similar_interface_df<- similar_interface_df[,c("iden_code","interface_difference_index")]
+  rownames(similar_interface_df) <- NULL
+  return (similar_interface_df)
+}
+
+
 ####################### UI #######################
 ui <- fluidPage(
   titlePanel(title=div(img(
@@ -330,21 +466,24 @@ ui <- fluidPage(
                                              
                                     ),
                                     tabPanel("Features",
-                                             selectInput("iso_txt","Isotype:",choices=c("All",sort(unique(vcab$Htype)))) %>%
+                                             selectInput("iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
                                                helper(type="inline",title="Isotype", 
                                                       content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                                "Each isotype has different function.",
-                                                                "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                                                "Each isotype has different function.")),
                                              
-                                             selectInput("Ltype_txt","Light chain type:",choices=c("All",sort(unique(vcab$Ltype)))) %>%
+                                             selectInput("Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
                                                helper(type="inline",title="Light chain type", 
-                                                      content=c("There are two light chain types in human, classified by the sequence of C region on L chain.",
-                                                                "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                                      content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
                                              selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
                                                helper(type="inline", title="Structural Coverage",
                                                       content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                                "Full antibody covers both Fab and Fc region",
-                                                                "For the defination of Fab and Fc, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                                                "Full antibody covers both Fab and Fc region")),
+                                             selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                               helper(type="inline",title="If has antigen",
+                                                      content=c("If the pdb file of this entry containing the antigen chain",
+                                                                "Any: include the antibody in the results no matter if it has antigen or not",
+                                                                "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                                "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
                                              
                                              selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
                                                helper(type="inline",title="Experimental Method",
@@ -417,6 +556,13 @@ ui <- fluidPage(
                                                                   "",
                                                                   "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
                                                                   "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
+                                    ),
+                                    tabPanel("CH1-CL Interface",
+                                             tags$em("Get the antibodies with similar CH1-CL interface pattern"),
+                                             br(),br(),
+                                             
+                                             textInput("pdb_interface","Enter the pdb ID","7c2l")
+                                      
                                     )
                                     
                         )
@@ -426,13 +572,20 @@ ui <- fluidPage(
                
                column(5,
                       wellPanel(
-                        textOutput("struc_selected_message"),
+                        tabsetPanel(
+                          tabPanel("Structural Viewer",
+                                   # show the structure viewer
+                                   textOutput("struc_selected_message"),
+                                   NGLVieweROutput("structure"),
+                                   checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
+                                   downloadButton("download_struc",label="Download the displayed structure")#,
+                                  
+                                   ),
+                          tabPanel("Sequence Coverage",
+                                   plotOutput("seq_cov_plot")
+                                   )
+                        )
                         
-                        # show the structure viewer
-                        NGLVieweROutput("structure"),
-                        downloadButton("download_struc",label="Download the displayed structure")#,
-                        #br(),
-                        #uiOutput("pdb_link") #The link to rcsb pdb (deleted since it's already availble inside the table)
                         
                       )
                )
@@ -458,24 +611,27 @@ ui <- fluidPage(
                           column(5,
                                  strong ("Filter the results by features:"),
                                  br(),br(),
-                                 selectInput("flt_iso_txt","Isotype:",choices=c("All",sort(unique(vcab$Htype)))) %>%
+                                 selectInput("flt_iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
                                    helper(type="inline",title="Isotype", 
                                           content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                    "Each isotype has different function.",
-                                                    "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                                    "Each isotype has different function.")),
                                  
-                                 selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",sort(unique(vcab$Ltype)))) %>%
+                                 selectInput("flt_Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
                                    helper(type="inline",title="Light chain type", 
-                                          content=c("There are two light chain types in human, classified by the sequence of C region on L chain.",
-                                                    "For detailed explanation, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes"))
-                                 
-                          ),
-                          column(5, offset=2,
+                                          content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
                                  selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
                                    helper(type="inline", title="Structural Coverage",
                                           content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                    "Full antibody covers both Fab and Fc region",
-                                                    "For the defination of Fab and Fc, please go to https://www.abcam.com/protocols/antibody-structure-and-isotypes")),
+                                                    "Full antibody covers both Fab and Fc region"))
+                          ),
+                          column(5, offset=2,
+                                 
+                                 selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                   helper(type="inline",title="If has antigen",
+                                          content=c("If the pdb file of this entry containing the antigen chain",
+                                                    "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
+                                                    "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                    "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
                                  selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
                                    helper(type="inline",title="Experimental Method",
                                           content=c("The experimental method used to acquire the structure.")),
@@ -498,16 +654,30 @@ ui <- fluidPage(
                ),
                column(5,
                       wellPanel(
-                        textOutput("pops_message"),
-                        br(),
-                        # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
-                        actionButton("clear_sele_res","Clear selected residues"),
-                        br(),br(),
                         tabsetPanel(
-                          tabPanel("H chain residues",
-                                   DT::dataTableOutput("h_pops")),
-                          tabPanel("L chain residues",
-                                   DT::dataTableOutput("l_pops"))
+                          tabPanel("CH1-CL interface residues",
+                                   textOutput("pops_message"),
+                                   
+                                   br(),
+                                   # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
+                                   actionButton("clear_sele_res","Clear selected residues"),
+                                   br(),br(),
+                                   tabsetPanel(
+                                     tabPanel("H chain residues",
+                                              DT::dataTableOutput("h_pops")),
+                                     tabPanel("L chain residues",
+                                              DT::dataTableOutput("l_pops"))
+                                   )
+                          
+                          ),
+                          tabPanel("Disulfide Bond",
+                                   br(),
+                                   # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
+                                   actionButton("clear_sele_disulfide","Clear selected residues"),
+                                   br(),br(),
+                                  DT::dataTableOutput("disulfide_info")
+                          )
+                        
                         )
                       )
                )
@@ -574,7 +744,7 @@ server <- function(input,output,session){
     else if (tabs_value() == "Features"){
       #o_df <- vcab[select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method),]
       #o_df <- if (is.na(res_cut)) o_df else o_df[o_df$resolution <= res_cut,] # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
-      o_df <- vcab[filter_the_rows(input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut),]
+      o_df <- vcab[filter_the_rows(input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut,input$if_antigen),]
       rownames(o_df) <- NULL # reset the index
       
       final_df <- addShow(o_df,ns)
@@ -735,8 +905,16 @@ server <- function(input,output,session){
       
     }
     
+    else if (tabs_value()=="CH1-CL Interface"){
+      #IF the user wants to search according to the interface similarity
+      interface_info <- get_similar_interface(input$pdb_interface,dm_df)
+      #total_table <- generate_total_info(interface_info,ns)
+      #ab_info$ab_info_df <- total_table
+      ab_info$ab_info_df <- interface_info
+      
+    }
     else{
-      # Download all the VCAb entries
+      
       ab_info$ab_info_df <- NULL
       ab_info$chain_type_message <- NULL
     }
@@ -814,7 +992,7 @@ server <- function(input,output,session){
   file_row_idx <- function(df){
     reactive({
       if (tabs_value()=="Sequence"){
-        return (filter_the_rows(input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,df))
+        return (filter_the_rows(input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
       }
       else{
         return (TRUE)
@@ -914,15 +1092,73 @@ server <- function(input,output,session){
     l_pops_proxy %>% selectRows(NULL)
   })
   
-  ### THE PANEL of 3D Structural viewer ##################################################################################################
+  ###### Disulfide Information ######
+  disulfide <- reactiveValues()
+  observe({
+    pdb_c <- struc_selected()
+    disulfide_str <- vcab[vcab$iden_code==pdb_c,"disulfide_bond"]
+    
+    d_rows=strsplit(disulfide_str,", ")[[1]]
+    pairs=c()
+    dist=c()
+    for (r in d_rows){
+      cols=strsplit(r,":")[[1]]
+      pairs=c(pairs,cols[1])
+      dist=c(dist,cols[2])
+    }
+    disulfide$df <-data.frame(
+      disulfide_bond=pairs,
+      distance=dist
+    )
+    
+  })
+  output$disulfide_info <- DT::renderDataTable({
+    DT::datatable(disulfide$df,
+                  options = list(orderClasses = TRUE,
+                                 pageLength = 10,
+                                 scrollX = TRUE,
+                                 selection='multiple')
+                  )
+  })
   
+  # Allow the user to reset the selected interface residues
+  disulfide_proxy=dataTableProxy('disulfide_info')
+  observeEvent(input$clear_sele_disulfide,{
+    disulfide_proxy %>% selectRows(NULL)
+  })
+  
+  
+  ### THE PANEL of 3D Structural viewer ##################################################################################################
+  ###### TABPANEL:Draw the seq_pos figure ######
+  output$seq_cov_plot<- renderPlot({
+    pdb_c <- struc_selected()
+    get_coverage_pos_plot (pdb_c,"Htype",total_dom_info,t_h_author_bl,t_h_coor_bl,df=vcab)
+  })
+  
+  ###### TABPANEL: Display the antibody structure ######
   # Get the directory of the pdb file:
   pdb_dir_val <- reactiveValues()
+  which_pdb_dir <- reactive({
+    pdb_c <- struc_selected()
+    pdbid <- strsplit(pdb_c,"_")[[1]][1]
+    
+    if (input$if_full_view==1){
+      return (paste0(f_pdb_dir,pdbid,".pdb"))
+    }
+    else{
+      return (paste(pdb_parent_dir,pdb_c,".pdb",sep=''))
+    }
+  })
   observeEvent(input$ab_info_table_rows_selected,{
     type_pdb_c <- struc_selected()
+    pdbid <- strsplit(type_pdb_c,"_")[[1]][1]
+    #pdb_dir_val$pdb <- pdbid
     pdb_dir_val$iden_code <- type_pdb_c
-    pdb_dir_val$dir <- paste(pdb_parent_dir,type_pdb_c,".pdb",sep='')
-    pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
+    
+    #pdb_dir_val$dir <- paste(pdb_parent_dir,type_pdb_c,".pdb",sep='')
+    #pdb_dir_val$dir <- which_pdb_dir()
+    
+    #pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
   })
   
 
@@ -938,21 +1174,42 @@ server <- function(input,output,session){
     
     position_str_vec <- paste (selected_pops$ResidNr, ":", selected_pops$Chain, sep='')
     position_str <- paste(position_str_vec,collapse=' or ')
+    
     return (position_str)
   }
   
-  #if (is.null(input$h_pops_rows_selected)){
-  #  # generate position_str
-  #}
-  #else{
-  #  # first innitialize the 
-  #}
+  select_disulfide_residues_to_be_labeled <- function(disulfide_rows,disulfide_table){
+    # Select the residues involved in disulfide bond
+    sele_disulfide_row_idx <- as.numeric(disulfide_rows)
+    sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
+    disulfide_pos_vec=c()
+    for (pair in sele_disulfide){
+      residues=strsplit(pair,"-")[[1]]
+      for (r in residues){
+        remove_res_name=substring(r,4)
+        str1=gsub("\\(",":",remove_res_name)
+        res_num_chain=gsub("\\)","",str1)
+        disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
+      }
+    }
+    
+    disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
+    return (disulfide_pos_str)
+  }
   h_res_select <- reactive({
     select_residues_to_be_labeled(input$h_pops_rows_selected,pops_info$h_df)
   })
   
   l_res_select <- reactive({
     select_residues_to_be_labeled(input$l_pops_rows_selected,pops_info$l_df)
+  })
+  
+  disulfide_select <- reactive({
+    select_disulfide_residues_to_be_labeled(input$disulfide_info_rows_selected,disulfide$df)
+  })
+  
+  output$test_out <-renderText({
+    disulfide_select()
   })
   
   # This repetitive code seems unavoidable:
@@ -969,10 +1226,30 @@ server <- function(input,output,session){
     position_str_vec <- paste (selected_pops$ResidNr, ":", selected_pops$Chain, sep='')
     position_str <- paste(position_str_vec,collapse=' or ')
     #paste(select_residues_to_be_labeled(input$h_pops_rows_selected,pops_info$h_df)," or ",select_residues_to_be_labeled(input$l_pops_rows_selected,pops_info$l_df))
-  })
+    
+    # Include the selected disulfide bonds
+    sele_disulfide_row_idx <- as.numeric(input$disulfide_info_rows_selected)
+    disulfide_table<- disulfide$df
+    sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
+    disulfide_pos_vec=c()
+    for (pair in sele_disulfide){
+      residues=strsplit(pair,"-")[[1]]
+      for (r in residues){
+        remove_res_name=substring(r,4)
+        str1=gsub("\\(",":",remove_res_name)
+        res_num_chain=gsub("\\)","",str1)
+        disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
+      }
+    }
+    
+    disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
+    total_pos_str <- paste0(position_str," or ",disulfide_pos_str)
+    #return (total_pos_str)
+    return (position_str)
+    })
   
   # Allow HC & LC to be colored with different colors, select the residues based on VCBoundary:
-  H_color_select <- reactive({
+  HC_color_select <- reactive({
     pdb_c <- struc_selected()
     hl <- strsplit(pdb_c,"_")[[1]][2]
     hChain <- substr(hl,1,1)
@@ -982,7 +1259,7 @@ server <- function(input,output,session){
     return(paste(h_vc,"-1000:",hChain,sep=""))
   })
   
-  L_color_select <- reactive({
+  LC_color_select <- reactive({
     pdb_c <- struc_selected()
     hl <- strsplit(pdb_c,"_")[[1]][2]
     lChain <- substr(hl,2,2)
@@ -992,22 +1269,51 @@ server <- function(input,output,session){
     return(paste(l_vc,"-1000:",lChain,sep=""))
   })
   
+  HV_color_select <- reactive({
+    pdb_c <- struc_selected()
+    hl <- strsplit(pdb_c,"_")[[1]][2]
+    hChain <- substr(hl,1,1)
+    
+    # Found the boundary between V and C:
+    h_vc <- o_vcab[o_vcab$iden_code==pdb_c,"pdb_H_VC_Boundary"]
+    return(paste("0-",h_vc,":",hChain,sep=""))
+  })
+  
+  LV_color_select <- reactive({
+    pdb_c <- struc_selected()
+    hl <- strsplit(pdb_c,"_")[[1]][2]
+    lChain <- substr(hl,2,2)
+    
+    # Found the boundary between V and C:
+    l_vc <- o_vcab[o_vcab$iden_code==pdb_c,"pdb_L_VC_Boundary"]
+    return(paste("0-",l_vc,":",lChain,sep=""))
+  })
+  
   output$structure <- renderNGLVieweR({
     # Colors:
     # V region: grey
     # C region: CH1 red, CL blue
     # labeled residues: yellow
-    NGLVieweR(pdb_dir_val$dir) %>%
+    NGLVieweR(which_pdb_dir()) %>%
+    #NGLVieweR(pdb_dir_val$dir) %>%
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="gray")) %>% #set the whole struc. grey
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
-                                                  "element",colorValue="red",sele=H_color_select())) %>% #set the HC region red
+                                                  "element",colorValue="red",sele=HC_color_select())) %>% #set the HC region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
-                                                  "element",colorValue="blue",sele=L_color_select())) %>% #set the LC region blue
+                                                  "element",colorValue="blue",sele=LC_color_select())) %>% #set the LC region blue
+      addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
+                                                  "element",colorValue="salmon",sele=HV_color_select())) %>% #set the HV region red
+      addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
+                                                  "element",colorValue="cornflowerblue",sele=LV_color_select())) %>% #set the LV region blue
+      addRepresentation("ball+stick", param = list(name = "ball+stick", colorScheme =
+                                                  "element",colorValue="cornflowerblue",sele="hetero")) %>% #set the LV region blue
       # Conditional pipe:
       `if`(h_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = h_res_select())),.) %>%
       `if`(l_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = l_res_select())),.) %>%
+      `if`(disulfide_select()!="", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "orange",sele = disulfide_select())),.) %>%
       `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       
       stageParameters(backgroundColor = "grey") %>%
       #setSize('20','20') %>%
@@ -1027,7 +1333,8 @@ server <- function(input,output,session){
       paste(pdb_dir_val$iden_code,"_",final_time,".pdb",sep="")
     },
     content=function(file){
-      file.copy(pdb_dir_val$dir,file)
+      #file.copy(pdb_dir_val$dir,file)
+      file.copy(which_pdb_dir(),file)
     }
   )
   
@@ -1068,7 +1375,7 @@ server <- function(input,output,session){
     
     # The 3D structural viewer panel:
     pdb_dir_val$iden_code <- NULL
-    pdb_dir_val$dir <- ""
+    #pdb_dir_val$dir <- ""
     pdb_dir_val$mess <- NULL
   }
   
