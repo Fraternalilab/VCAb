@@ -8,9 +8,7 @@ library (shinyhelper)
 library (ggplot2)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/new_vcab.csv"
-#vcab_dir="~/Documents/vcab/vcab_db/combined_vcab_for_testing.csv"
-#vcab_dir="~/Documents/vcab_test/vcab_db/new_vcab.csv"
+vcab_dir="../vcab_db/final_vcab.csv"
 pops_parent_dir <- "../pops/result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
@@ -47,8 +45,8 @@ dom_info_dir="../seq_db/ref_db/all_alleles/H_chains/h_alleles_domain_info.csv"
 total_dom_info=read.csv(dom_info_dir)
 total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
 
-h_author_seq_bl_dir="../vcab_db/blast_result/h_seq_bl_result.csv"
-h_coor_seq_bl_dir="../vcab_db/blast_result/h_coordinate_seq_bl_result.csv"
+h_author_seq_bl_dir="../vcab_db/blast_result/best_h_seq_bl_result.csv"
+h_coor_seq_bl_dir="../vcab_db/blast_result/best_h_coordinate_seq_bl_result.csv"
 t_h_author_bl=read.csv(h_author_seq_bl_dir)
 t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
@@ -564,11 +562,17 @@ ui <- fluidPage(
                                              tabPanel("CH1-CL Interface",
                                                       tags$em("Get the antibodies with similar CH1-CL interface pattern"),
                                                       br(),br(),
-                                                      selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code)) %>%
+                                                      selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
+                                                                     options=list(maxOptions =5,
+                                                                                  placeholder = 'Please type iden_code here',
+                                                                                  onInitialize = I('function() { this.setValue(""); }'))) %>%
+                                                        #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
                                                         helper(type="inline",title="iden_code", 
-                                                               content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\".",
-                                                                         "Now the interface similarity search function only support antibodies within VCAb.",
-                                                                         "The interface similarity is ranked by interface similarity index. For detailed explanation, please go to the VCAb Documentation."))
+                                                               content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
+                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.",
+                                                                         "The interface similarity is ranked by interface difference index. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.",
+                                                                         "NOTE: Now the interface similarity search function only support antibodies within VCAb."
+                                                               ))
                                                       #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
                                                       
                                              )
@@ -586,6 +590,17 @@ ui <- fluidPage(
                                             textOutput("struc_selected_message"),
                                             NGLVieweROutput("structure"),
                                             checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
+                                            conditionalPanel(
+                                              condition="input.if_full_view==1",
+                                              checkboxGroupInput("full_view_option","Display options:",
+                                                                 c("Color antigen chain in this pdb"="color_antigen",
+                                                                   "Show other ligand(s) in this pdb"="show_ligand",
+                                                                   "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"))
+                                              
+                                              
+                                              
+                                              #)
+                                            ),
                                             downloadButton("download_struc",label="Download the displayed structure")#,
                                             
                                    ),
@@ -662,30 +677,31 @@ ui <- fluidPage(
                         ),
                         column(5,
                                wellPanel(
-                                 tabsetPanel(
-                                   tabPanel("CH1-CL interface residues",
-                                            textOutput("pops_message"),
-                                            
-                                            br(),
-                                            # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
-                                            actionButton("clear_sele_res","Clear selected residues"),
-                                            br(),br(),
-                                            tabsetPanel(
-                                              tabPanel("H chain residues",
-                                                       DT::dataTableOutput("h_pops")),
-                                              tabPanel("L chain residues",
-                                                       DT::dataTableOutput("l_pops"))
-                                            )
-                                            
-                                   ),
-                                   tabPanel("Disulfide Bond",
-                                            br(),
-                                            # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
-                                            actionButton("clear_sele_disulfide","Clear selected residues"),
-                                            br(),br(),
-                                            DT::dataTableOutput("disulfide_info")
-                                   )
-                                   
+                                 tabsetPanel(id="residue_list_panel",
+                                             tabPanel("CH1-CL interface residues",
+                                                      # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
+                                                      textOutput("pops_message"),
+                                                      
+                                                      br(),
+                                                      
+                                                      actionButton("clear_sele_res","Clear selected residues"),
+                                                      checkboxInput(inputId = "zoom_in_sele_res",label="Zoom in to selected residues",FALSE),
+                                                      tabsetPanel(
+                                                        tabPanel("H chain residues",
+                                                                 DT::dataTableOutput("h_pops")),
+                                                        tabPanel("L chain residues",
+                                                                 DT::dataTableOutput("l_pops"))
+                                                      )
+                                                      
+                                             ),
+                                             tabPanel("Disulfide Bond",
+                                                      br(),
+                                                      # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
+                                                      actionButton("clear_sele_disulfide","Clear selected residues"),
+                                                      checkboxInput(inputId = "zoom_in_sele_disulfide",label="Zoom in to selected Cysteine",FALSE),
+                                                      DT::dataTableOutput("disulfide_info")
+                                             )
+                                             
                                  )
                                )
                         )
@@ -916,11 +932,16 @@ server <- function(input,output,session){
     else if (tabs_value()=="CH1-CL Interface"){
       #IF the user wants to search according to the interface similarity
       iden_code <- input$pdb_interface
-      interface_info <- get_similar_interface(iden_code,dm_df)
-      total_table <- generate_total_info(interface_info,ns)
-      ab_info$ab_info_df <- total_table
-      #ab_info$ab_info_df <- interface_info
-      #ab_info$ab_info_df <-vcab[0,]
+      if (iden_code==""){
+        ab_info$ab_info_df <- NULL
+        ab_info$chain_type_message <- "Please enter a valid iden_code"
+      }
+      else{
+        interface_info <- get_similar_interface(iden_code,dm_df)
+        total_table <- generate_total_info(interface_info,ns)
+        ab_info$ab_info_df <- total_table
+      }
+      
       
       
     }
@@ -1169,12 +1190,9 @@ server <- function(input,output,session){
     #pdb_dir_val$pdb <- pdbid
     pdb_dir_val$iden_code <- type_pdb_c
     
-    #pdb_dir_val$dir <- paste(pdb_parent_dir,type_pdb_c,".pdb",sep='')
     #pdb_dir_val$dir <- which_pdb_dir()
-    
     #pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
   })
-  
   
   output$struc_selected_message <- renderText({pdb_dir_val$mess})
   
@@ -1303,6 +1321,37 @@ server <- function(input,output,session){
     return(paste("0-",l_vc,":",lChain,sep=""))
   })
   
+  antigen_color_select <- reactive({
+    pdb_c <- struc_selected()
+    antigen_info <- vcab[vcab$iden_code==pdb_c,"antigen_chain"]
+    if (antigen_info==""){
+      return ("")
+    }
+    else{
+      antigen_chain_vec=strsplit(antigen_info," \\| ")[[1]]
+      str1=unlist(lapply(antigen_chain_vec,function(x){paste0(":",x)}))
+      
+      return (paste(str1,collapse=" or "))
+    }
+  })
+  
+  if_full_view_value <- reactive({input$if_full_view})
+  full_view_option_value<- reactive({input$full_view_option})
+  
+  HL_chain_selection <- reactive({
+    pdb_c<-struc_selected()
+    HL <- strsplit(pdb_c,"_")[[1]][2]
+    hl_vec <- strsplit(HL,"")[[1]]
+    str1=unlist(lapply(hl_vec,function(x){paste0(":",x)}))
+    
+    return (paste(str1,collapse=" or "))
+  })
+  
+  zoom_in_sele_res_val <- reactive({input$zoom_in_sele_res})
+  zoom_in_sele_disulfide_val <- reactive({input$zoom_in_sele_disulfide})
+  
+  multi_condition <- function(con1,con2){return (con1&con2)}
+  
   output$structure <- renderNGLVieweR({
     # Colors:
     # V region: grey
@@ -1320,14 +1369,28 @@ server <- function(input,output,session){
                                                   "element",colorValue="salmon",sele=HV_color_select())) %>% #set the HV region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="cornflowerblue",sele=LV_color_select())) %>% #set the LV region blue
-      addRepresentation("ball+stick", param = list(name = "ball+stick", colorScheme =
-                                                     "element",colorValue="cornflowerblue",sele="hetero")) %>% #set the LV region blue
+      #addRepresentation("ball+stick", param = list(name = "ball+stick", colorScheme =
+      #                                            "element",colorValue="cornflowerblue",sele="hetero")) %>% #show the heteroatoms
       # Conditional pipe:
+      
       `if`(h_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = h_res_select())),.) %>%
       `if`(l_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = l_res_select())),.) %>%
       `if`(disulfide_select()!="", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "orange",sele = disulfide_select())),.) %>%
+      
       `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      
+      `if`(multi_condition("color_antigen" %in% full_view_option_value(),antigen_color_select()!=""),addRepresentation(., "cartoon", param = list(name = "cartoon", colorScheme ="element",colorValue="black",sele=antigen_color_select())),.) %>%
+      `if`("show_ligand" %in% full_view_option_value(), addRepresentation(., "ball+stick", param = list(name = "ball+stick", colorScheme ="element",colorValue="cyan",sele="ligand")),.) %>%
+      
+      `if`("zoom_in_to_HL" %in% full_view_option_value(), zoomMove(.,center=HL_chain_selection(),zoom=HL_chain_selection()),.) %>%
+      `if`(multi_condition(zoom_in_sele_res_val()==1,res_select()!=":"), zoomMove(.,center=res_select(),zoom=res_select()),.) %>%
+      `if`(multi_condition(zoom_in_sele_disulfide_val()==1,disulfide_select()!=""), zoomMove(.,center=disulfide_select(),zoom=disulfide_select()),.) %>%
+      
+      
+      
+      
+      
       
       stageParameters(backgroundColor = "grey") %>%
       #setSize('20','20') %>%
@@ -1391,6 +1454,13 @@ server <- function(input,output,session){
     pdb_dir_val$iden_code <- NULL
     #pdb_dir_val$dir <- ""
     pdb_dir_val$mess <- NULL
+    updateCheckboxInput(session,"if_full_view",value=0)
+    updateCheckboxInput(session,"zoom_in_sele_res",value=0)
+    updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
+    updateCheckboxGroupInput(session,"full_view_option","Display options:",
+                             c("Color antigen chain in this pdb"="color_antigen",
+                               "Show other ligand(s) in this pdb"="show_ligand",
+                               "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"),selected=NULL)
   }
   
   # When new tab is selected, initialize everything
@@ -1404,6 +1474,14 @@ server <- function(input,output,session){
     initialize_everything()
     
   })
+  
+  # when new tab in residue_list_panel is selected, initialize checkbox only
+  observeEvent(input$residue_list_panel,{
+    updateCheckboxInput(session,"zoom_in_sele_res",value=0)
+    updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
+    
+  })
+  
   
   ###### Statistics ############################################################################################
   output$total_ab_enties <- renderUI({
