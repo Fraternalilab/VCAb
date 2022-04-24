@@ -875,12 +875,6 @@ lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
 hcoorbl=generate_bl_result (htqseqs,h_ref_db,"h_coordinate_seq_bl","./blast_result")
 lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_result")
 
-# Collapse bl_result to make the file smaller and the shiny app to load the file faster:
-extract_hit_bl_result (hbl,"Htype","./blast_result/best_h_seq_bl_result",df=vcab)
-extract_hit_bl_result (lbl,"Ltype","./blast_result/best_l_seq_bl_result",df=vcab)
-
-extract_hit_bl_result (hcoorbl,"Htype","./blast_result/best_h_coordinate_seq_bl_result",df=vcab)
-extract_hit_bl_result (lcoorbl,"Ltype","./blast_result/best_l_coordinate_seq_bl_result",df=vcab)
 
 total_vcab=generate_final_db (cHL,hbl,lbl,hcoorbl,lcoorbl)
 
@@ -910,6 +904,13 @@ ff_vcab=get_V_C_seq(vcab_pdb_vcb)
 ff_vcab=ff_vcab.reset_index(drop=True)
 ff_vcab=add_disulfide_info(ff_vcab,"../pdb_struc/c_pdb/")
 ff_vcab.to_csv("new_vcab.csv")
+
+# Collapse bl_result to make the file smaller and the shiny app to load the file faster:
+extract_hit_bl_result (hbl,"Htype","./blast_result/best_h_seq_bl_result",df=ff_vcab)
+extract_hit_bl_result (lbl,"Ltype","./blast_result/best_l_seq_bl_result",df=ff_vcab)
+
+extract_hit_bl_result (hcoorbl,"Htype","./blast_result/best_h_coordinate_seq_bl_result",df=ff_vcab)
+extract_hit_bl_result (lcoorbl,"Ltype","./blast_result/best_l_coordinate_seq_bl_result",df=ff_vcab)
 
 # 3. Generate files for the shiny app:
 # 3.1. Generate POPSComp results
