@@ -57,9 +57,19 @@ dm_df=read.csv(dm_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
-vcab=o_vcab[,!(names(o_vcab) %in% c("X"))] #[,c(32,2:4,18,19,41,37:39,6:16,33:36)]
+
+
+# Round some values to two digit in order to make the table looks better:
+vcab=o_vcab
+colnames(vcab)[which(names(vcab) == "elbow_angle")] <- "elbow_angle0"
+vcab$elbow_angle <- unlist(lapply(vcab$elbow_angle0,function(x){round(x,2)}))
+vcab$CH1_CL.interface_angle <- unlist(lapply(vcab$CH1.CL_interface_angle,function(x){round(x,2)}))
+vcab=vcab[,!(names(vcab) %in% c("X","CH1.CL_interface_angle","elbow_angle0"))] 
+
 #Note: the positions of seqs:33:36
 ##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
+update_date_fn="../vcab_db/VCAb_db_update_date.txt"
+update_date=readChar(fileName, file.info(fileName)$size)
 
 
 ####################### Functions #######################
@@ -456,6 +466,7 @@ ui <- fluidPage(
   ),
   "V and C region bearing Antibody Database"),
   windowTitle = "VCAb antibody database"),
+  tags$em(paste0("Last updated: ",update_date)),
   navbarPage("",
              tabPanel("Search",
                       fluidRow(
@@ -589,6 +600,10 @@ ui <- fluidPage(
                                             # show the structure viewer
                                             textOutput("struc_selected_message"),
                                             NGLVieweROutput("structure"),
+                                            div(img(
+                                              src="./struc_viewer_legend.png",
+                                              width = 680#, height = 80
+                                            )),
                                             checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
                                             conditionalPanel(
                                               condition="input.if_full_view==1",
@@ -621,9 +636,26 @@ ui <- fluidPage(
                                  textOutput("chain_type_message"),
                                  selectInput("file_col","Select the additional column(s) you want to display",
                                              choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
-                                             multiple=TRUE),
+                                             multiple=TRUE)%>%
+                                   helper(type="inline",title="Display additional columns",
+                                          content=c("For simplicity, some columns of the antibody table below are hidden",
+                                                    "By selecting the column names listed here, you can acquire the information in these columns",
+                                                    "Multiple columns can be selected at the same time")),
+                                 fluidRow(
+                                   column(4,
+                                          downloadButton("download_subset",label="Download the searching result")
+                                   ),
+                                   column(8,
+                                          checkboxInput(inputId = "if_download_pdb",label="Select this to enable the download of pdb files")%>%
+                                            helper(type="inline",title="Download searching results",
+                                                   content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
+                                                             "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
+                                                             "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
+                                                   ))
+                                   )
+                                   
+                                 ),
                                  
-                                 downloadButton("download_subset",label="Download the searching result"),
                                  br(),
                                  #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
                                  conditionalPanel(#condition="input.filter_result==1",
@@ -698,7 +730,7 @@ ui <- fluidPage(
                                                       br(),
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       actionButton("clear_sele_disulfide","Clear selected residues"),
-                                                      checkboxInput(inputId = "zoom_in_sele_disulfide",label="Zoom in to selected Cysteine",FALSE),
+                                                      checkboxInput(inputId = "zoom_in_sele_disulfide",label="Zoom in to selected Cysteines",FALSE),
                                                       DT::dataTableOutput("disulfide_info")
                                              )
                                              
@@ -983,11 +1015,13 @@ server <- function(input,output,session){
       write.csv(search_result,file.path(temp_directory,table_name))
       
       # PDB files:
-      pdb_dir=dir.create(file.path(temp_directory,"chain_pdb"))
-      for (i in ab_info$ab_info_df["iden_code"]){
-        pdb_name<-paste0(i,".pdb")
-        #file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,pdb_name))
-        file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,"chain_pdb",pdb_name))
+      if (input$if_download_pdb==1){
+        pdb_dir=dir.create(file.path(temp_directory,"chain_pdb"))
+        for (i in ab_info$ab_info_df["iden_code"]){
+          pdb_name<-paste0(i,".pdb")
+          #file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,pdb_name))
+          file.copy(paste0(pdb_parent_dir,i,".pdb"),file.path(temp_directory,"chain_pdb",pdb_name))
+        }
       }
       
       zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
@@ -1009,17 +1043,17 @@ server <- function(input,output,session){
   
   file_col_idx <- reactive({
     if (tabs_value()=="PDB" | tabs_value()=="Features"){
-      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
     else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired")){
-      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
       #return (names(ab_info$ab_info_df))
     }
     else if (tabs_value()=="CH1-CL Interface"){
-      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
     else {
-      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',input$file_col))
+      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
   })
   
@@ -1191,7 +1225,7 @@ server <- function(input,output,session){
     pdb_dir_val$iden_code <- type_pdb_c
     
     #pdb_dir_val$dir <- which_pdb_dir()
-    #pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
+    pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
   })
   
   output$struc_selected_message <- renderText({pdb_dir_val$mess})
@@ -1328,7 +1362,9 @@ server <- function(input,output,session){
       return ("")
     }
     else{
+      HL <- strsplit(pdb_c,"")[[1]]
       antigen_chain_vec=strsplit(antigen_info," \\| ")[[1]]
+      antigen_chain_vec <- antigen_chain_vec[!antigen_chain_vec %in% HL] #The antigen annotation fetched from SAbDab is not always correct. In some cases, the H/L chain ID is in this column
       str1=unlist(lapply(antigen_chain_vec,function(x){paste0(":",x)}))
       
       return (paste(str1,collapse=" or "))
@@ -1448,6 +1484,8 @@ server <- function(input,output,session){
     pops_info$mess <- NULL
     pops_info$h_df <- NULL
     pops_info$l_df <- NULL
+    
+    disulfide$df <- NULL
     
     
     # The 3D structural viewer panel:
