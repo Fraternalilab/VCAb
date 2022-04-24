@@ -801,7 +801,23 @@ def add_disulfide_info(df,c_pdb_dir):
     df["disulfide_bond"]=disulfide_info
     return df
 
+def extract_hit_bl_result (bl_df,horltype,new_bl_name,df=vcab):
+    # extract only the bl_result of the hit chain type
+    # bl_df: the blast result dataframe to be extracted
+    # horltype can only be "Htype" or "Ltype"
+    new_bl_lst=[]
+    for i in df.index:
+        iden_code=df.loc[i,"iden_code"]
+        ctype=df.loc[i,horltype]
+        allele_info=ctype.split("(")[1]
+        allele=allele_info.split(",")[0]
 
+        sub_bl_df=pd.DataFrame(bl_df.loc[(bl_df["iden_code"]==iden_code)&(bl_df["matched_alleles"]==allele)].iloc[0,]).T
+
+        new_bl_lst.append(sub_bl_df)
+    new_bl=pd.concat(new_bl_lst)
+
+    new_bl.to_csv(f"{new_bl_name}.csv")
 
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
@@ -858,6 +874,13 @@ lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
 
 hcoorbl=generate_bl_result (htqseqs,h_ref_db,"h_coordinate_seq_bl","./blast_result")
 lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_result")
+
+# Collapse bl_result to make the file smaller and the shiny app to load the file faster:
+extract_hit_bl_result (hbl,"Htype","./blast_result/best_h_seq_bl_result",df=vcab)
+extract_hit_bl_result (lbl,"Ltype","./blast_result/best_l_seq_bl_result",df=vcab)
+
+extract_hit_bl_result (hcoorbl,"Htype","./blast_result/best_h_coordinate_seq_bl_result",df=vcab)
+extract_hit_bl_result (lcoorbl,"Ltype","./blast_result/best_l_coordinate_seq_bl_result",df=vcab)
 
 total_vcab=generate_final_db (cHL,hbl,lbl,hcoorbl,lcoorbl)
 
