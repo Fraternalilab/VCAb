@@ -819,6 +819,8 @@ def extract_hit_bl_result (bl_df,horltype,new_bl_name,df=vcab):
 
     new_bl.to_csv(f"{new_bl_name}.csv")
 
+
+
 ########################## Apply the functions #######################################
 # The directory to run this is the directory of this python file
 parser = argparse.ArgumentParser(description="Generate the VCAb database")

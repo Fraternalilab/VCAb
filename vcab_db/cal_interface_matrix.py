@@ -7,7 +7,7 @@ import Bio.PDB
 from Bio import AlignIO
 import os
 import math
-import time
+from datetime import date
 
 
 # PART 1. read pops result_lstdef replace_back_T_F_chain (o_df):
@@ -55,14 +55,14 @@ def run_pairwise_profile_aln(iden_code,chainType,ref_profile_dir,out_dir,df):
     # assign different C_coor_seq and ref_profile to different chainType(H/L) and structural coverage (Fab/full antibody)
     if chainType.lower()=="h":
         col_name="HC_coordinate_seq"
-        ref_profile=f"{ref_profile_dir}/unique_alleles_CH1_aln_profile"
+        ref_profile=f"ref_profile/unique_alleles_CH1_aln_profile"
 
         if struc_cov=='full antibody':
-            ref_profile=f"{ref_profile_dir}/unique_alleles_aln_profile"
+            ref_profile=f"ref_profile/unique_alleles_aln_profile"
 
     if chainType.lower()=="l":
         col_name="LC_coordinate_seq"
-        ref_profile=f"{ref_profile_dir}/unique_light_aln_profile"
+        ref_profile=f"ref_profile/unique_light_aln_profile"
 
     c_coor_seq=df.loc[df["iden_code"]==iden_code,col_name].item()
 
@@ -71,7 +71,11 @@ def run_pairwise_profile_aln(iden_code,chainType,ref_profile_dir,out_dir,df):
         f.write(f">{seq_id}\n")
         f.write(f"{c_coor_seq}\n")
 
-    cmd_string=f"t_coffee {out_dir}/{seq_id}.fasta -profile={ref_profile} -outfile {out_dir}/{seq_id}_aln_to_ref.aln -in Mclustalw_pair"
+    # change command string to use docker container version of tcoffee as I can't install tcoffee locally on the server (JN, 22-Apr-2022)
+    out_dir = out_dir.replace("..", "/data0/sa_k2031500/vcab")
+    out_dir = out_dir.replace("aln_results/", "")
+    cmd_string=f"docker run --rm -v {out_dir}:/data pegi3s/tcoffee t_coffee /data/aln_results//{seq_id}.fasta -profile /data/{ref_profile} -outfile /data/aln_results//{seq_id}_aln_to_ref.aln -in Mclustalw_pair"
+    #  t_coffee {out_dir}/{seq_id}.fasta -profile={ref_profile} -outfile {out_dir}/{seq_id}_aln_to_ref.aln -in Mclustalw_pair"
     os.system(cmd_string)
 
 
@@ -199,7 +203,8 @@ def map_profile_aln_to_residue_info (iden_code,chainType,ref_profile_dir,aln_out
     # Step 4. Make the dimension of the full_ig (H chain) the same as fab
     struc_cov=df.loc[df["iden_code"]==iden_code,'Structural Coverage'].item()
     if chainType.lower()=="h" and struc_cov=='full antibody':
-        h_type=df.loc[df["iden_code"]==iden_code,"Htype"].item()
+        h_info=df.loc[df["iden_code"]==iden_code,"Htype"].item()
+        h_type=h_info.split('(')[0]
         h_type_dict={'IgA1':'IGHA1',
                      'IgA2':'IGHA2',
                      'IgD':'IGHD',
@@ -287,7 +292,7 @@ with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
 # Calculate the distance matrix of dm (matrix of the interface distance index)
 flt_vcab=exclude_mtrx_not_calculated(vcab,"../ch1_cl_interface_matrix/mtrx_not_calculated.txt")
 # exclude the VCAb entries with no interface matrix (mainly because the POPSComp result is not available for the solution scattering method)
-dm,ab_info_label=generate_dm_of_interface_dm(vcab,mtrx_out_dir)
+dm,ab_info_label=generate_dm_of_interface_dm(flt_vcab,mtrx_out_dir)
 np.savetxt(f"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.txt",dm,fmt='%10.5f')
 
 dm_df=pd.DataFrame(dm,columns=[ab_info_label[k][0] for k in ab_info_label.keys()],index=[ab_info_label[k][0] for k in ab_info_label.keys()])
