@@ -743,8 +743,8 @@ ui <- fluidPage(
                       sidebarLayout(
                         sidebarPanel(
                           checkboxGroupInput(inputId = "stat", label="The statistics of VCAb based on:",
-                                             choices=c("Isotypes"="Htype",
-                                                       "Light chain types"="Ltype",
+                                             choices=c("Isotypes"="Htype_val",
+                                                       "Light chain types"="Ltype_val",
                                                        "Structural Coverage"="Structural.Coverage")),
                           uiOutput("total_ab_enties")
                         ),
@@ -1527,23 +1527,25 @@ server <- function(input,output,session){
   })
   output$statistics_plt <- renderPlot({
     in_value <- input$stat 
-    
+    vcab_copy=data.frame(vcab)
+    vcab_copy$Htype_val=unlist(lapply(vcab_copy$Htype,function(x){strsplit(x,"\\(")[[1]][1]}))
+    vcab_copy$Ltype_val=unlist(lapply(vcab_copy$Ltype,function(x){strsplit(x,"\\(")[[1]][1]}))
     if (length(in_value)==1){
-      ggplot(vcab,aes_string(in_value))+
+      ggplot(vcab_copy,aes_string(in_value))+
         geom_bar() +
         scale_y_log10() + 
         geom_text(stat="count",aes(label=..count..), vjust=-1)
     }
     else if (length(in_value)==2){
       in_value <- sort(in_value)
-      ggplot(vcab,aes_string(in_value[1], fill = in_value[2]))+
+      ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
         geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
         scale_y_log10() + 
         geom_text(stat="count",aes(label=..count..), vjust=-1, position = position_dodge2(width = 0.8)) 
     }
     else if (length(in_value)==3){
       in_value <- sort(in_value)
-      ggplot(vcab,aes_string(in_value[1], fill = in_value[2]))+
+      ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
         geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
         scale_y_log10() +
         facet_wrap(~ get(in_value[3])) + 
