@@ -1,6 +1,13 @@
 # VCAb
 This repository contains all the source code needed to generate VCAb database and the shiny application of it.
 
+**You are now on the 'server' branch which holds the version hosted on the webserver. It is completely identical to the main branch, except that the T-Coffee execution switches to use instead the docker version as there was issues in installing T-Coffee.**
+
+Webserver address: [development (beta) server](https://dev.fraternalilab.kcl.ac.uk/VCAb/) (only for testing bug-fix or new functions etc.) or [production server](https://fraternalilab.kcl.ac.uk/VCAb/).
+
+T-Coffee Docker: [pegi3s/tcoffee](https://registry.hub.docker.com/r/pegi3s/tcoffee)
+
+
 ## VCAb database
 To generate the VCAb database, go to the `vcab_db` directory, run `generate_db.py`.
 ### Note 
