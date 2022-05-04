@@ -3,6 +3,7 @@
 
 import pandas as pd
 import numpy as np
+import json
 import requests
 from Bio.Blast.Applications import NcbiblastpCommandline as ncbiblp
 
@@ -269,24 +270,31 @@ chain_type_names={'IGHG1':"IgG1",
                  }
 
 # Collect the domain information
+def extract_domain_information_from_imgt_fasta(fn):
+    domains={}
+    for record in SeqIO.parse(fn,"fasta"):
+        title_lst=record.description.split("|")
+
+        allele_name=title_lst[1]
+        if_partial=title_lst[13]# if the allele sequence only contains a fragment
+        domain_name=title_lst[4]
+        domain_seq_len=int(title_lst[11][0:-3])
+
+        if allele_name not in domains.keys():
+            d_counter=domain_seq_len
+            domains[allele_name]={domain_name:[(1,domain_seq_len),d_counter,if_partial]}
+        else:
+            last_val=list(domains[allele_name].values())[-1]
+            previous_d_counter=last_val[1]
+            d_counter=domain_seq_len
+            domains[allele_name][domain_name]=[(1+previous_d_counter,domain_seq_len+previous_d_counter),d_counter+previous_d_counter,if_partial]
+    return domains
+
 imgt_h_original="../seq_db/ref_db/all_alleles/H_chains/imgt_original.fasta"
-h_domains={}
-for record in SeqIO.parse(imgt_h_original,"fasta"):
-    title_lst=record.description.split("|")
+imgt_l_original="/Users/dongjung/Downloads/vcab/seq_db/ref_db/all_alleles/L_chains/imgt_original.fasta"
 
-    allele_name=title_lst[1]
-    if_partial=title_lst[13]# if the allele sequence only contains a fragment
-    domain_name=title_lst[4]
-    domain_seq_len=int(title_lst[11][0:-3])
-
-    if allele_name not in h_domains.keys():
-        d_counter=domain_seq_len
-        h_domains[allele_name]={domain_name:[(1,domain_seq_len),d_counter,if_partial]}
-    else:
-        last_val=list(h_domains[allele_name].values())[-1]
-        previous_d_counter=last_val[1]
-        d_counter=domain_seq_len
-        h_domains[allele_name][domain_name]=[(1+previous_d_counter,domain_seq_len+previous_d_counter),d_counter+previous_d_counter,if_partial]
+h_domains=extract_domain_information_from_imgt_fasta(imgt_h_original)
+l_domains=extract_domain_information_from_imgt_fasta(imgt_l_original)
 
 def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
     # creat the blastp command line
@@ -306,7 +314,31 @@ def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
     df.to_csv(f"{out_dir}/{bl_out_name}_result.csv")
     return df
 
-def get_chain_type_VCB (iden_code,df):
+
+def found_dom_exchanged_ab(cross_bl,df):
+    # To found the possiblr domain_exchanged antibody
+    # df: vcab
+
+    # collapse the cross_bl: only extract the top hits
+    c_cross_bl_lst=[]
+    iden_code=list(set(cross_bl["iden_code"]))
+    for i in iden_code:
+        sub=pd.DataFrame(cross_bl.loc[cross_bl["iden_code"]==i].iloc[0,]).T
+        c_cross_bl_lst.append(sub)
+    c_cross_bl=pd.concat(c_cross_bl_lst)
+
+    flt=c_cross_bl.loc[c_cross_bl["ident"]>50]
+    iden_code=flt["iden_code"].values
+
+    df["special_cases"]=[str(df.loc[i,"iden_code"] in iden_code) for i in df.index]
+    return df
+
+def include_collapsed_alleles(allele,c_alleles_dict):
+    all_alleles=[allele]
+    all_alleles+=c_alleles_dict[allele]
+    return ",".join(all_alleles)
+
+def get_chain_type_VCB (iden_code,df,collapsed_alleles):
     # df: the bl result of the full seqs, could be the bl results of H or L chain
     # note: for L chain: the returned type is the LSubtype
     # return 1. chain type of the seq; 2. alternative chain type of the seq (the same score with the best hit); 3.the VC_Boundary of the sequence (author-submitted sequence)
@@ -319,7 +351,8 @@ def get_chain_type_VCB (iden_code,df):
 
     allele=best_hit_df["matched_alleles"]
     ident=best_hit_df["ident"]
-    best_hit_info=f"{best_chain_type}({allele}, Per. Ident: {ident})"
+    all_alleles=include_collapsed_alleles(allele,collapsed_alleles)
+    best_hit_info=f"{best_chain_type}({all_alleles}: Per. Ident: {ident})"
 
     best_score=best_hit_df["score"]
     VCB=best_hit_df["start_ab"]
@@ -335,20 +368,21 @@ def get_chain_type_VCB (iden_code,df):
         elif len(alternative_hit_df) != 0:
             a_chain_type=alternative_hit_df.loc[i,"chain_type"]
             a_allele=alternative_hit_df.loc[i,"matched_alleles"]
+            a_all_alleles=include_collapsed_alleles(a_allele,collapsed_alleles)
             a_ident=alternative_hit_df.loc[i,"ident"]
             if a_chain_type != best_chain_type:
                 # exclude the cases with the same chain type but different alleles
-                alternative_hit_info+=f"{a_chain_type}({a_allele}, Per. Ident: {a_ident}) "
+                alternative_hit_info+=f"{a_chain_type}({a_all_alleles}: Per. Ident: {a_ident}) "
 
     return best_hit_info,alternative_hit_info,VCB
 
-def aligned_to (start,end,d_name,allele):
+def aligned_to (start,end,d_name,allele,domains=h_domains):
     # return the aligned coverage for certain domain in specific Ig
     # start & end: start and end positions of the aligned region in the ref_seq in the blast aln result
     # d_name:domain name ('CH1',etc.)
     # allele: allele_name (e.g. IGHG1*01)
 
-    d_region=h_domains[allele][d_name][0] #domain boundary
+    d_region=domains[allele][d_name][0] #domain boundary
 
     a=d_region[0] # d_region start
     b=d_region[1] # d_region end
@@ -366,7 +400,7 @@ def aligned_to (start,end,d_name,allele):
         overlapped_perc_protein=((med_large-med_small)/(end-start))*100
         return [d_name,overlapped_perc_domains,overlapped_perc_protein]
 
-def get_struc_cov_coor_VCB (iden_code,ig,df):
+def get_struc_cov_coor_VCB (iden_code,ig,df,h_domains):
     # Note: df must be the bl result of the true seqs (coordinate seqs)
     # return: 1. align_info; 2.Structural Coverage; 3.VC_Boundary of the coor sequence
     # df: the bl_result of the coordinate sequence
@@ -395,7 +429,9 @@ def get_struc_cov_coor_VCB (iden_code,ig,df):
             subresult=aligned_to (s,e,r,hit_allele)
             if type(subresult)!= str:
                 if subresult[1:] !=[0,0]:
-                    sub_string=f"{subresult[0]}(covers {subresult[1]}% of {subresult[0]}, accounts for {subresult[2]}% of the H_coor_seq)"
+                    perc1=round(subresult[1],2)
+                    perc2=round(subresult[2],2)
+                    sub_string=f"{subresult[0]}(covers {perc1}% of {subresult[0]}, accounts for {perc2}% of the H_coor_seq)"
                     displayed_align_info.append(sub_string)
                     align_info.append(subresult)
 
@@ -454,8 +490,179 @@ def get_carbohydrate_info_from_pdbe(pdb):
     else:
         return ""
 
-def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
-    #o_df: the df table from sabdab
+
+### FUNCTIONS DESIGNED FOR DOMAIN_SWAPPED_AB: ###
+def extract_domain_from_dom_swapped_ab(iden_code,bl,crbl,h_domains,l_domains):
+    # bl,crbl should belongs to the same chain sequence
+    # bl: straight blast to the corresponding ref profile (e.g. H chain seq to H ref seqs)
+    # crbl: cross blast to the other ref profile (e.g. H chain seq to L ref seqs)
+    # both bl and crbl should be the collpased blast result. So, the len(bl_info)==len(crbl_info)==1
+    bl_info=bl.loc[bl["iden_code"]==iden_code]
+    crbl_info=crbl.loc[crbl["iden_code"]==iden_code]
+
+    focus_bl=[i for i in [bl_info,crbl_info] if len(i) !=0]
+    focus_bl=[i for i in focus_bl if i["ident"].item()>50] # Only focus on the blast hit with identity larger than 50
+
+    total_aln_info=[]
+    displayed_align_info=[]
+    total_chain_type_info={} # in the format of{chain_type:ident}, at most one H hit one L hit
+    for hit in focus_bl:
+        s_ab=hit["start_ab"].item()
+        e_ab=hit["end_ab"].item()
+
+        s_ref=hit["start_ref"].item()
+        e_ref=hit["end_ref"].item()
+
+        hit_allele=hit["matched_alleles"].item()
+        chain_type=hit["chain_type"].item()
+        total_chain_type_info[chain_type]=[hit_allele,hit["ident"].item()]
+        domains=h_domains
+        if chain_type in ["kappa","lambda"]:
+            domains=l_domains
+        regions=[i for i in domains[hit_allele].keys() if "M" not in i]
+
+        align_info=[(s_ab,e_ab),(s_ref,e_ref)]
+
+        for r in regions:
+            subresult=aligned_to (s_ref,e_ref,r,hit_allele,domains)
+            if type(subresult)!= str:
+                if subresult[1:] !=[0,0]:
+                    perc1=round(subresult[1],2)
+                    perc2=round(subresult[2],2)
+                    domain_name=subresult[0]
+                    domain_name+=f"-{chain_type}"
+                    sub_string=f"{domain_name}(covers {perc1}% of {subresult[0]}, accounts for {perc2}% of the H_coor_seq)"
+                    displayed_align_info.append(sub_string)
+                    align_info.append(subresult)
+
+        total_aln_info.append(align_info)
+
+    # pro_d: extract only the domain names
+    # vcb: VCBoundary
+    pro_d=[]
+    total_vcb=[]
+    for aln in total_aln_info:
+        sub_d=[i[0] for i in aln[2:]]
+        pro_d +=sub_d
+
+        vcb=aln[0][0]
+        total_vcb.append(vcb)
+
+    h_d=[i for i in pro_d if i != 'C-REGION']
+    l_d=[i for i in pro_d if i not in h_d]
+
+    domain_info="; ".join(displayed_align_info)
+    final_vcb=total_vcb
+    if len(total_vcb)!=0:
+        final_vcb=min(total_vcb)
+    # take the min value of the aln_start_ab_pos as the VCBoundary, if the seq mapped to both H and l ref
+
+    return focus_bl,total_aln_info,h_d,l_d,domain_info,final_vcb,total_chain_type_info
+
+def annotations_for_dom_swapped_ab (iden_code,hfbl,hf_crbl,lfbl,lf_crbl,htbl,ht_crbl,ltbl,lt_crbl,h_domains,l_domains,c_h_alleles,c_l_alleles):
+
+    # Part1. Identify chain types:
+    __,__,__,__,__,hf_vcb,h_ctype=extract_domain_from_dom_swapped_ab(iden_code,htbl,ht_crbl,h_domains,l_domains)
+    __,__,__,__,__,lf_vcb,l_ctype=extract_domain_from_dom_swapped_ab(iden_code,ltbl,lt_crbl,h_domains,l_domains)
+    htype,ltype,lsubtype,alter_htype,alter_ltype,hf_vcb,lf_vcb=("","","","","","","")
+
+    def mergeDictionary(dict_1, dict_2):
+        dict_3 = {**dict_1, **dict_2}
+        for key, value in dict_3.items():
+            if key in dict_1 and key in dict_2:
+                # take the one with the highest val (in this case highest identity) as the value
+                   dict_3[key] = max([dict_1[key],dict_2[key]])
+        return dict_3
+
+    total_ctype=mergeDictionary(h_ctype,l_ctype)
+
+    if len(total_ctype) >1:
+        # If len(total_ctype <=1), that means h_ctype or l_ctype is empty, mostly because we force the seq only containing V region to align with C refs
+        htype_dict={k:v for k,v in total_ctype.items() if k not in ["kappa","lambda"]}
+        ltype_dict={k:v for k,v in total_ctype.items() if k not in htype_dict.keys()}
+
+
+        ##in case chain_type_dictionary contains multiple chain_types
+        ### (at most two, since total_ctype contains 2 H hit and 2 L hit at most)
+        #### (that is because h_ctype & l_ctype contains 1 H hit and 1 L hit at most)
+        htype_max_ident=max(list(map(lambda x:x[1],list(htype_dict.values()))))
+        ltype_max_ident=max(list(map(lambda x:x[1],list(ltype_dict.values()))))
+        f_htype_dict={k:v for k,v in htype_dict.items() if v[1]==htype_max_ident}
+        f_ltype_dict={k:v for k,v in ltype_dict.items() if v[1]==ltype_max_ident}
+
+        f_htype_tuple=list(f_htype_dict.items())[0]
+        f_ltype_tuple=list(f_ltype_dict.items())[0]
+        h_allele=f_htype_tuple[1][0]
+        l_allele=f_ltype_tuple[1][0]
+        all_h_allele=include_collapsed_alleles(h_allele,c_h_alleles)
+        all_l_allele=include_collapsed_alleles(l_allele,c_l_alleles)
+        htype=f"{f_htype_tuple[0]}({all_h_allele}: Per. Ident: {f_htype_tuple[1][1]})"
+        ltype=f"{f_ltype_tuple[0]}({all_l_allele}: Per. Ident: {f_ltype_tuple[1][1]})"
+        lsubtype=f_ltype_tuple[1][0].split("*")[0]
+
+        ##alternative chain types:
+        alter_htype_dict={k:v for k,v in htype_dict.items() if k!=f_htype_tuple[0]}
+        alter_ltype_dict={k:v for k,v in ltype_dict.items() if k!=f_ltype_tuple[0]}
+        alter_htype=""
+        alter_ltype=""
+        if len(alter_htype_dict)!=0:
+            alter_h_allele=list(alter_htype_dict.values())[0][0]
+            all_alter_h_allele=include_collapsed_alleles(alter_h_allele,c_h_alleles)
+            alter_htype=f"{list(alter_htype_dict.keys())[0]}({all_alter_h_allele}: Per. Ident: {list(alter_htype_dict.values())[0][1]})"
+
+    #Part2. Identify the structural coverage and the coor_vcb of the domain_swapped antibody
+
+    h_focus_bl,h_aln_info,h_hd,h_ld,h_domain_info,ht_vcb,ht_ctype=extract_domain_from_dom_swapped_ab(iden_code,htbl,ht_crbl,h_domains,l_domains)
+    l_focus_bl,l_aln_info,l_hd,l_ld,l_domain_info,lt_vcb,lt_ctype=extract_domain_from_dom_swapped_ab(iden_code,ltbl,lt_crbl,h_domains,l_domains)
+
+
+    total_hd=list(set(h_hd+l_hd))
+    total_ld=list(set(h_ld+l_ld))
+
+    total_hd.sort()
+    total_ld.sort()
+
+    hit_allele_dict=mergeDictionary(ht_ctype,lt_ctype)
+    ht_type_dict={k:v for k,v in hit_allele_dict.items() if k not in ["kappa","lambda"]}
+    hit_allele=list(ht_type_dict.items())[0][1][0]
+    ig_d=[i for i in h_domains[hit_allele].keys() if "M" not in i]
+    ig_d.sort()
+
+
+    hchain,lchain=iden_code.split("_")[1]
+    aln_info={}
+    aln_info[hchain]=h_aln_info
+    aln_info[lchain]=h_aln_info
+
+    domain_info="SPECIAL_CASE:"
+    domain_info+=f"Chain {hchain}: {h_domain_info}. "
+    domain_info+=f"Chain {lchain}: {l_domain_info}. "
+
+    # Find the structural coverage
+    struc_cov=""
+
+    if len(h_focus_bl)==0 or len(l_focus_bl)==0:
+        struc_cov='check V/C Annotation'
+    else:
+        if ht_vcb <=70 or lt_vcb <=70:
+            struc_cov='check V/C Annotation'
+        else:
+            if total_hd[0]!="CH1":
+                struc_cov = 'not classified'
+                # mostly: structure contains only V region and is forced to align with C region
+                # other cases: 1za6 (CH2 deleted)
+
+            elif ig_d==total_hd:
+                struc_cov='full antibody'
+            elif ("CH3" not in total_hd) and ("CH3-CHS" not in total_hd):
+                struc_cov='Fab'
+            else:
+                struc_cov='not classified'
+    return htype,ltype,lsubtype,alter_htype,alter_ltype,hf_vcb,lf_vcb,aln_info,domain_info,struc_cov,ht_vcb,lt_vcb
+###------------###
+
+def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl,hf_crbl,lf_crbl,ht_crbl,lt_crbl,h_domains,l_domains,c_h_alleles,c_l_alleles):
+    #o_df: the df table from sabdab, labeled with if_domain_swapped
     # hfbl & lfbl: the bl_results of the seqs of H & L chains
     # htbl & ltbl: the bl_results of the coordinate seqs of H & L chains
     # return the final results of vcab (except the pdb_VCB)
@@ -493,28 +700,34 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl):
         iden_code=df.loc[i,"iden_code"]
         pdb_code=df.loc[i,"pdb"]
         carbohydrate=get_carbohydrate_info_from_pdbe(pdb_code)
+        if_special_case=df.loc[i,"special_cases"]
 
-        try:
-            this_h_info,this_alter_h_info,this_hf_vcb=get_chain_type_VCB (iden_code,hfbl)
-            this_l_info,this_alter_l_info,this_lf_vcb=get_chain_type_VCB (iden_code,lfbl)
-        except:
-            this_h_info,this_alter_h_info,this_hf_vcb=("","","")
-            this_l_info,this_alter_l_info,this_lf_vcb=("","","")
-            print (iden_code)
+        this_h_info,this_l_info,this_l_subtype,this_alter_h_info,this_alter_l_info,this_hf_vcb,this_lf_vcb,this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb,this_lt_vcb=[""]*12
+        if if_special_case=="True" or if_special_case==True:
+            this_h_info,this_l_info,this_l_subtype,this_alter_h_info,this_alter_l_info,this_hf_vcb,this_lf_vcb,this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb,this_lt_vcb=annotations_for_dom_swapped_ab (iden_code,hfbl,hf_crbl,lfbl,lf_crbl,htbl,ht_crbl,ltbl,lt_crbl,h_domains,l_domains,c_h_alleles,c_l_alleles)
+        else:
 
-        this_h_type=this_h_info.split("(")[0]
-        this_l_type=this_l_info.split("(")[0]
-        try:
-            this_l_subtype=this_l_info.split("(")[1].split("*")[0]
-        except:
-            print(f"error:line504:{iden_code} \n {this_l_info} \n {this_l_type}")
-            this_l_subtype=""
+            try:
+                this_h_info,this_alter_h_info,this_hf_vcb=get_chain_type_VCB (iden_code,hfbl,c_h_alleles)
+                this_l_info,this_alter_l_info,this_lf_vcb=get_chain_type_VCB (iden_code,lfbl,c_l_alleles)
+            except:
+                this_h_info,this_alter_h_info,this_hf_vcb=("","","")
+                this_l_info,this_alter_l_info,this_lf_vcb=("","","")
+                print (iden_code)
 
-        try:
-            this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb=get_struc_cov_coor_VCB (iden_code,this_h_type,htbl)
-            __,__,__,this_lt_vcb=get_struc_cov_coor_VCB (iden_code,this_l_type,ltbl)
-        except:
-            this_aln_info,this_struc_cov,this_ht_vcb,this_lt_vcb,this_domain_info=("unidentified","unidentified","unidentified","unidentified","unidentified")
+            this_h_type=this_h_info.split("(")[0]
+            this_l_type=this_l_info.split("(")[0]
+            try:
+                this_l_subtype=this_l_info.split("(")[1].split("*")[0]
+            except:
+                print(f"error:line504:{iden_code} \n {this_l_info} \n {this_l_type}")
+                this_l_subtype=""
+
+            try:
+                this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb=get_struc_cov_coor_VCB (iden_code,this_h_type,htbl,h_domains)
+                __,__,__,this_lt_vcb=get_struc_cov_coor_VCB (iden_code,this_l_type,ltbl,h_domains)
+            except:
+                this_aln_info,this_struc_cov,this_ht_vcb,this_lt_vcb,this_domain_info=("unidentified","unidentified","unidentified","unidentified","unidentified")
 
 
         Htype.append(this_h_info)
@@ -801,8 +1014,25 @@ def add_disulfide_info(df,c_pdb_dir):
     df["disulfide_bond"]=disulfide_info
     return df
 
-def extract_hit_bl_result (bl_df,horltype,new_bl_name,df=vcab):
-    # extract only the bl_result of the hit chain type
+def extract_hit_bl_result (bl):
+    # extract the best (the first one by the default order given by blast) hit in bl_result
+    # bl: the blast result dataframe to be extracted
+    # Note: the difference between this function and "extract_hit_bl_result_for_shiny":
+    ## in this function, the chain type would not be needed. This is mainly for the domain extraction step in domain-swaaped antibodies.
+    ## The reason why "extract_hit_bl_result_for_shiny" need the chain type is because when generating the sequence coverage plot in shiny app, we want to compare the author_seq and coor_seq with the same allele
+    ## Because some coor_seq lacking some fragment compared with author_seq, this minor difference might lead to different hit alleles when we blast them against the ref_alleles
+
+    c_bl_lst=[]
+    iden_code=list(set(bl["iden_code"]))
+    for i in iden_code:
+        sub=pd.DataFrame(bl.loc[bl["iden_code"]==i].iloc[0,]).T
+        c_bl_lst.append(sub)
+    c_bl=pd.concat(c_bl_lst)
+
+    return c_bl
+
+def extract_hit_bl_result_for_shiny (bl_df,horltype,new_bl_name,df):
+    # extract only the bl_result of the hit chain type (when the hit chain type is known)
     # bl_df: the blast result dataframe to be extracted
     # horltype can only be "Htype" or "Ltype"
     new_bl_lst=[]
@@ -869,14 +1099,56 @@ ltqseqs="../seq_db/vcab_db/L_coordinate_seq.fasta"
 h_ref_db="../seq_db/ref_db/all_alleles/H_chains/unique_alleles.fasta"
 l_ref_db="../seq_db/ref_db/all_alleles/L_chains/unique_light_alleles.fasta"
 
+# Do the blast:
 hbl=generate_bl_result (hfqseqs,h_ref_db,"h_seq_bl","./blast_result")
 lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
 
 hcoorbl=generate_bl_result (htqseqs,h_ref_db,"h_coordinate_seq_bl","./blast_result")
 lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_result")
 
+# Do the cross-blast in order to find possible domain-swapped antibodies
+l_coor_cross_bl=generate_bl_result (ltqseqs,h_ref_db,"cross_bl_l_coor_seq","./blast_result")
+h_coor_cross_bl=generate_bl_result (htqseqs,l_ref_db,"cross_bl_h_coor_seq","./blast_result")
 
-total_vcab=generate_final_db (cHL,hbl,lbl,hcoorbl,lcoorbl)
+l_author_cross_bl=generate_bl_result (lfqseqs,h_ref_db,"cross_bl_l_author_seq","./blast_result")
+h_author_cross_bl=generate_bl_result (hfqseqs,l_ref_db,"cross_bl_h_author_seq","./blast_result")
+
+cHL_dom_swap_labeled=found_dom_exchanged_ab(l_coor_cross_bl,cHL)
+# For test:
+cHL_dom_swap_labeled.to_csv("cHL_dom_swap_labeled.csv")
+
+"""# For test:
+hbl=pd.read_csv("./blast_result/h_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+lbl=pd.read_csv("./blast_result/l_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+hcoorbl=pd.read_csv("./blast_result/h_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+lcoorbl=pd.read_csv("./blast_result/l_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+
+l_coor_cross_bl=pd.read_csv("./blast_result/cross_bl_l_coor_seq_result.csv").drop(columns=["Unnamed: 0"])
+h_coor_cross_bl=pd.read_csv("./blast_result/cross_bl_h_coor_seq_result.csv").drop(columns=["Unnamed: 0"])
+l_author_cross_bl=pd.read_csv("./blast_result/cross_bl_l_author_seq_result.csv").drop(columns=["Unnamed: 0"])
+h_author_cross_bl=pd.read_csv("./blast_result/cross_bl_h_author_seq_result.csv").drop(columns=["Unnamed: 0"])"""
+
+# Get the collapsed bl_result:
+htbl=extract_hit_bl_result(hcoorbl)
+ltbl=extract_hit_bl_result(lcoorbl)
+
+hfbl=extract_hit_bl_result(hbl)
+lfbl=extract_hit_bl_result(lbl)
+
+ht_crbl=extract_hit_bl_result (h_coor_cross_bl)
+lt_crbl=extract_hit_bl_result (l_coor_cross_bl)
+
+hf_crbl=extract_hit_bl_result (h_author_cross_bl)
+lf_crbl=extract_hit_bl_result (l_author_cross_bl)
+
+"""# For test:
+cHL_dom_swap_labeled=pd.read_csv("cHL_dom_swap_labeled.csv").drop(columns=["Unnamed: 0"])
+cHL_dom_swap_labeled=cHL_dom_swap_labeled.rename(columns={"domain_swapped_ab":"special_cases"})"""
+collapsed_h_alleles=json.load(open("/Users/dongjung/Documents/vcab/seq_db/ref_db/all_alleles/H_chains/collapsed_h_alleles.json","r"))
+collapsed_l_alleles=json.load(open("/Users/dongjung/Documents/vcab/seq_db/ref_db/all_alleles/L_chains/collapsed_l_alleles.json","r"))
+total_vcab=generate_final_db (cHL_dom_swap_labeled,hfbl,lfbl,htbl,ltbl,hf_crbl,lf_crbl,ht_crbl,lt_crbl,h_domains,l_domains,collapsed_h_alleles,collapsed_l_alleles)
+# For test:
+total_vcab.to_csv("test_vcab.csv")
 
 # Extract unusual cases:
 vcab,unusual=find_unusual_cases (total_vcab)
@@ -906,11 +1178,11 @@ ff_vcab=add_disulfide_info(ff_vcab,"../pdb_struc/c_pdb/")
 ff_vcab.to_csv("new_vcab.csv")
 
 # Collapse bl_result to make the file smaller and the shiny app to load the file faster:
-extract_hit_bl_result (hbl,"Htype","./blast_result/best_h_seq_bl_result",df=ff_vcab)
-extract_hit_bl_result (lbl,"Ltype","./blast_result/best_l_seq_bl_result",df=ff_vcab)
+extract_hit_bl_result_for_shiny (hbl,"Htype","./blast_result/best_h_seq_bl_result",ff_vcab)
+extract_hit_bl_result_for_shiny (lbl,"Ltype","./blast_result/best_l_seq_bl_result",ff_vcab)
 
-extract_hit_bl_result (hcoorbl,"Htype","./blast_result/best_h_coordinate_seq_bl_result",df=ff_vcab)
-extract_hit_bl_result (lcoorbl,"Ltype","./blast_result/best_l_coordinate_seq_bl_result",df=ff_vcab)
+extract_hit_bl_result_for_shiny (hcoorbl,"Htype","./blast_result/best_h_coordinate_seq_bl_result",ff_vcab)
+extract_hit_bl_result_for_shiny (lcoorbl,"Ltype","./blast_result/best_l_coordinate_seq_bl_result",ff_vcab)
 
 # 3. Generate files for the shiny app:
 # 3.1. Generate POPSComp results
