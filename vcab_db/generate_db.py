@@ -564,7 +564,7 @@ def annotations_for_dom_swapped_ab (iden_code,hfbl,hf_crbl,lfbl,lf_crbl,htbl,ht_
     # Part1. Identify chain types:
     __,__,__,__,__,hf_vcb,h_ctype=extract_domain_from_dom_swapped_ab(iden_code,htbl,ht_crbl,h_domains,l_domains)
     __,__,__,__,__,lf_vcb,l_ctype=extract_domain_from_dom_swapped_ab(iden_code,ltbl,lt_crbl,h_domains,l_domains)
-    htype,ltype,lsubtype,alter_htype,alter_ltype,hf_vcb,lf_vcb=("","","","","","","")
+    htype,ltype,lsubtype,alter_htype,alter_ltype=("","","","","")
 
     def mergeDictionary(dict_1, dict_2):
         dict_3 = {**dict_1, **dict_2}
