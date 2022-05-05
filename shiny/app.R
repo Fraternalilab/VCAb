@@ -754,22 +754,6 @@ ui <- fluidPage(
                         )
                       )
              ),
-	     tabPanel("About",
-		      h5(paste0("Version: ", release)),
-		      br(),
-                      h5("Documentation can be found in the following link:"),
-                      tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
-                      h5(),
-		      h5("If you have used VCAb in your work, please cite: "),
-		      br(),
-		      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
-		      br(),
-   		      div(img(src="./Fig2_VCAb_db.png",
-                              width = 1080#, height = 80
-			      )),
-		      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
-		      br()
-	     ),
              tabPanel("Statistics",
                       sidebarLayout(
                         sidebarPanel(
@@ -793,7 +777,23 @@ ui <- fluidPage(
 		      downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
                       br(),br(),br(),br(),br(),br()
                       
-             )
+             ),
+             tabPanel("About",
+                      h5(paste0("Version: ", release)),
+                      br(),
+                      h5("Documentation can be found in the following link:"),
+                      tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
+                      h5(),
+                      h5("If you have used VCAb in your work, please cite: "),
+                      br(),
+                      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
+                      br(),
+                      div(img(src="./Fig2_VCAb_db.png",
+                              width = 1080#, height = 80
+                              )),
+                      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
+                      br()
+             )	     
   )
   
 )
