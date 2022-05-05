@@ -58,6 +58,9 @@ dm_df=read.csv(dm_dir)
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
 
+# Read the unusual case csv
+all_unusual_cases = read.csv(file = '../vcab_db/unusual_cases/all_unusual_cases.csv')
+all_unusual_cases = all_unusual_cases[, 3:ncol(all_unusual_cases)]
 
 # Round some values to two digit in order to make the table looks better:
 vcab=o_vcab
@@ -69,8 +72,10 @@ vcab=vcab[,!(names(vcab) %in% c("X","CH1.CL_interface_angle","elbow_angle0"))]
 #Note: the positions of seqs:33:36
 ##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 update_date_fn="../vcab_db/VCAb_db_update_date.txt"
-update_date=readChar(fileName, file.info(fileName)$size)
+update_date=readChar(update_date_fn, file.info(update_date_fn)$size)
 
+release_fn="../release"
+release=readChar(release_fn, file.info(release_fn)$size)
 
 ####################### Functions #######################
 # Generate blast table: return the best blast result (order: highest iden, alignment_length)
@@ -571,7 +576,7 @@ ui <- fluidPage(
                                                                            "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
                                              ),
                                              tabPanel("CH1-CL Interface",
-                                                      tags$em("Get the antibodies with similar CH1-CL interface pattern"),
+                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface."),
                                                       br(),br(),
                                                       selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
                                                                      options=list(maxOptions =5,
@@ -581,8 +586,8 @@ ui <- fluidPage(
                                                         helper(type="inline",title="iden_code", 
                                                                content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
                                                                          "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.",
-                                                                         "The interface similarity is ranked by interface difference index. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.",
-                                                                         "NOTE: Now the interface similarity search function only support antibodies within VCAb."
+                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.",
+                                                                         "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
                                                                ))
                                                       #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
                                                       
@@ -598,11 +603,18 @@ ui <- fluidPage(
                                  tabsetPanel(
                                    tabPanel("Structural Viewer",
                                             # show the structure viewer
-                                            textOutput("struc_selected_message"),
-                                            NGLVieweROutput("structure"),
+                                            textOutput("struc_selected_message") %>%
+                                            helper(type="inline",title="Structure viewer",
+                                                               content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:",
+									 "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.",
+									 "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:",
+									 "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
+									 "(items indicated in quotation marks will be changed as the mouse moves.)"
+                                                               )),
+					    NGLVieweROutput("structure"),
                                             div(img(
                                               src="./struc_viewer_legend.png",
-                                              width = 680#, height = 80
+                                              width = 560#, height = 80
                                             )),
                                             checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
                                             conditionalPanel(
@@ -616,7 +628,7 @@ ui <- fluidPage(
                                               
                                               #)
                                             ),
-                                            downloadButton("download_struc",label="Download the displayed structure")#,
+                                            downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
                                             
                                    ),
                                    tabPanel("Sequence Coverage",
@@ -643,11 +655,11 @@ ui <- fluidPage(
                                                     "Multiple columns can be selected at the same time")),
                                  fluidRow(
                                    column(4,
-                                          downloadButton("download_subset",label="Download the searching result")
+                                          downloadButton("download_subset",label="Download search results")
                                    ),
                                    column(8,
-                                          checkboxInput(inputId = "if_download_pdb",label="Select this to enable the download of pdb files")%>%
-                                            helper(type="inline",title="Download searching results",
+                                          checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
+                                            helper(type="inline",title="Download search results",
                                                    content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
                                                              "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
                                                              "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
@@ -668,12 +680,12 @@ ui <- fluidPage(
                                           br(),br(),
                                           selectInput("flt_iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
                                             helper(type="inline",title="Isotype", 
-                                                   content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                                   content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
                                                              "Each isotype has different function.")),
                                           
                                           selectInput("flt_Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
                                             helper(type="inline",title="Light chain type", 
-                                                   content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                                                   content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
                                           selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
                                             helper(type="inline", title="Structural Coverage",
                                                    content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
@@ -712,8 +724,11 @@ ui <- fluidPage(
                                  tabsetPanel(id="residue_list_panel",
                                              tabPanel("CH1-CL interface residues",
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
-                                                      textOutput("pops_message"),
-                                                      
+                                                      textOutput("pops_message") %>%
+                                                      helper(type="inline",title="CH1-CL interface residues",
+                                                               content=c("Interface analysis was performed using POPSComp (Cavallo, Kleinjung and Fraternali NAR (2003), doi: 10.1093/nar/gkg601. (github: https://github.com/Fraternalilab/POPScomp).",
+									 "Amino acid numbering follows the numbering scheme in the displayed/analysed .pdb file."
+                                                               )),
                                                       br(),
                                                       
                                                       actionButton("clear_sele_res","Clear selected residues"),
@@ -739,6 +754,22 @@ ui <- fluidPage(
                         )
                       )
              ),
+	     tabPanel("About",
+		      h5(paste0("Version: ", release)),
+		      br(),
+                      h5("Documentation can be found in the following link:"),
+                      tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
+                      h5(),
+		      h5("If you have used VCAb in your work, please cite: "),
+		      br(),
+		      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
+		      br(),
+   		      div(img(src="./Fig2_VCAb_db.png",
+                              width = 1080#, height = 80
+			      )),
+		      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
+		      br()
+	     ),
              tabPanel("Statistics",
                       sidebarLayout(
                         sidebarPanel(
@@ -758,6 +789,8 @@ ui <- fluidPage(
              tabPanel("Download",
                       ## Allow the user to download the entire database
                       downloadButton("download",label="Download all entries in VCAb"),
+		      br(),
+		      downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
                       br(),br(),br(),br(),br(),br()
                       
              )
@@ -1561,9 +1594,13 @@ server <- function(input,output,session){
       write.csv(vcab_download,file)
     }
   )
-  
-  
-  
+  all_unusual = all_unusual_cases
+  output$download_unusual <- downloadHandler(
+    filename = 'all_unusual_cases.csv', 
+    content = function(file){
+      write.csv(all_unusual, file)
+    }
+  )
   
 }
 

@@ -830,6 +830,7 @@ args = parser.parse_args()
 # 1.1
 sabdab=pd.read_csv(args.in_file,sep='\t')
 #sub_sabdab=sabdab.iloc[0:50,:] # For test
+sabdab=sabdab.rename(columns = {'heavy_subclass':'heavy_vfamily', 'light_subclass': 'light_vfamily'})
 
 paired,H_df,L_df=sabdab_filter(sabdab)
 
@@ -892,6 +893,9 @@ sus_v_c.to_csv("./unusual_cases/suspicious_v_c_annotation_in_SAbDab.csv")
 unusual.to_csv("./unusual_cases/unusual.csv")
 struc_cov_unclassified.to_csv("./unusual_cases/struc_cov_not_classified.csv")
 
+# merge all unusual cases together in one file
+all_unusual = pd.concat([unusual, sus_v_c, struc_cov_unclassified])
+all_unusual.to_csv("./unusual_cases/all_unusual_cases.csv")
 
 # 2.1.CUT THE PDB FILES (also add the pdb_VCB to vcab)
 generate_chain_pdb_total (f_vcab,"../pdb_struc/full_pdb/","../pdb_struc/chain_pdb/")
