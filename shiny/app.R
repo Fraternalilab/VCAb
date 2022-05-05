@@ -52,8 +52,8 @@ t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
 # Files required to rank the antibody according to interface similarity:
 ## dm stands for distance matrix: the matrix holding the interface difference index value
-dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
-dm_df=read.csv(dm_dir)
+#dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
+#dm_df=read.csv(dm_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
@@ -576,7 +576,7 @@ ui <- fluidPage(
                                                                            "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
                                              ),
                                              tabPanel("CH1-CL Interface",
-                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface."),
+                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
                                                       br(),br(),
                                                       selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
                                                                      options=list(maxOptions =5,
@@ -585,8 +585,8 @@ ui <- fluidPage(
                                                         #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
                                                         helper(type="inline",title="iden_code", 
                                                                content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
-                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.",
-                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.",
+                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
+                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
                                                                          "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
                                                                ))
                                                       #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
@@ -605,9 +605,9 @@ ui <- fluidPage(
                                             # show the structure viewer
                                             textOutput("struc_selected_message") %>%
                                             helper(type="inline",title="Structure viewer",
-                                                               content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:",
-									 "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.",
-									 "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:",
+                                                               content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
+									 "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
+									 "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
 									 "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
 									 "(items indicated in quotation marks will be changed as the mouse moves.)"
                                                                )),
@@ -726,7 +726,7 @@ ui <- fluidPage(
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       textOutput("pops_message") %>%
                                                       helper(type="inline",title="CH1-CL interface residues",
-                                                               content=c("Interface analysis was performed using POPSComp (Cavallo, Kleinjung and Fraternali NAR (2003), doi: 10.1093/nar/gkg601. (github: https://github.com/Fraternalilab/POPScomp).",
+                                                               content=c("Interface analysis was performed using POPSComp (Cavallo, Kleinjung and Fraternali NAR (2003), doi: 10.1093/nar/gkg601. (github: https://github.com/Fraternalilab/POPScomp).","",
 									 "Amino acid numbering follows the numbering scheme in the displayed/analysed .pdb file."
                                                                )),
                                                       br(),
@@ -1002,6 +1002,8 @@ server <- function(input,output,session){
         ab_info$chain_type_message <- "Please enter a valid iden_code"
       }
       else{
+        dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
+        dm_df=read.csv(dm_dir)
         interface_info <- get_similar_interface(iden_code,dm_df)
         total_table <- generate_total_info(interface_info,ns)
         ab_info$ab_info_df <- total_table

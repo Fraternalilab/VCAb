@@ -1220,5 +1220,5 @@ os.system("makeblastdb -in ../seq_db/vcab_db/all_v_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/all_full_seq.fasta -dbtype prot")
 
 # Run cal_angles.py & cal_interface_matrix.py
-os.system("python cal_angles.py")
-os.system("python cal_interface_matrix.py")
+os.system("python3 cal_angles.py")
+os.system("python3 cal_interface_matrix.py")
