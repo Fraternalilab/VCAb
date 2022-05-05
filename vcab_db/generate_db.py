@@ -1144,8 +1144,8 @@ lf_crbl=extract_hit_bl_result (l_author_cross_bl)
 """# For test:
 cHL_dom_swap_labeled=pd.read_csv("cHL_dom_swap_labeled.csv").drop(columns=["Unnamed: 0"])
 cHL_dom_swap_labeled=cHL_dom_swap_labeled.rename(columns={"domain_swapped_ab":"special_cases"})"""
-collapsed_h_alleles=json.load(open("/Users/dongjung/Documents/vcab/seq_db/ref_db/all_alleles/H_chains/collapsed_h_alleles.json","r"))
-collapsed_l_alleles=json.load(open("/Users/dongjung/Documents/vcab/seq_db/ref_db/all_alleles/L_chains/collapsed_l_alleles.json","r"))
+collapsed_h_alleles=json.load(open("../seq_db/ref_db/all_alleles/H_chains/collapsed_h_alleles.json","r"))
+collapsed_l_alleles=json.load(open("../seq_db/ref_db/all_alleles/L_chains/collapsed_l_alleles.json","r"))
 total_vcab=generate_final_db (cHL_dom_swap_labeled,hfbl,lfbl,htbl,ltbl,hf_crbl,lf_crbl,ht_crbl,lt_crbl,h_domains,l_domains,collapsed_h_alleles,collapsed_l_alleles)
 # For test:
 total_vcab.to_csv("test_vcab.csv")
