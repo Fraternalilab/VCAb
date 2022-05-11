@@ -3,7 +3,7 @@ This repository contains all the source code needed to generate VCAb database an
 
 ## Access VCAb online
 
-VCAb can be accessed [online](https://fraternalilab.kcl.ac.uk/VCAb/). For tutorials on how to use the website, please go to the [github wiki](https://github.com/Fraternalilab/VCAb/wiki)
+VCAb can be accessed [online](https://fraternalilab.kcl.ac.uk/VCAb/). For documentation on how to use the website, please go to the [github wiki](https://github.com/Fraternalilab/VCAb/wiki).
 
 ## Generate local version of VCAb
 
@@ -17,7 +17,7 @@ To generate the VCAb database, go to the `vcab_db` directory, run `generate_db.p
 
 ### VCAb shiny application
 To generate the VCAb shiny app, go to `shiny` and run `app.R`.
-### Note
+#### Note
 In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
 
 ### Packages required 
