@@ -338,6 +338,13 @@ def include_collapsed_alleles(allele,c_alleles_dict):
     all_alleles+=c_alleles_dict[allele]
     return ",".join(all_alleles)
 
+def get_best_hit_for_each_allele(df):
+    # get the best hit for each allele in blast result
+    result_lst=[]
+    for name,sub_df in df.groupby('matched_alleles',sort=False):
+        result_lst.append(sub_df.iloc[0,:])
+    return pd.DataFrame(result_lst)
+
 def get_chain_type_VCB (iden_code,df,collapsed_alleles):
     # df: the bl result of the full seqs, could be the bl results of H or L chain
     # note: for L chain: the returned type is the LSubtype
@@ -346,6 +353,10 @@ def get_chain_type_VCB (iden_code,df,collapsed_alleles):
     hit_info=hit_info.reset_index(drop=True)
 
     # Best match:
+    # Assign the chain type based on alignment length & identity:
+    best_hit_for_each_allele=get_best_hit_for_each_allele(hit_info)
+    hit_info=best_hit_for_each_allele.sort_values(by=["ident"],ascending=False)
+
     best_hit_df=hit_info.iloc[0,]
     best_chain_type=best_hit_df["chain_type"]
 
