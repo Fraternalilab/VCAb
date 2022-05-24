@@ -354,7 +354,8 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   # horltype should be only "Htype" or "Ltype"
   ctype=df[df$iden_code==iden_code,horltype]
   allele_info=strsplit(ctype,"\\(")[[1]][2]
-  allele=strsplit(allele_info,",")[[1]][1]
+  if(grepl(",", allele_info)) allele=strsplit(allele_info,",")[[1]][1]
+  else allele=strsplit(allele_info,":")[[1]][1]
   
   # (1) annotation of domain starts/end points of the reference allele
   dom_positions = ref_dom[ref_dom$q==allele,]

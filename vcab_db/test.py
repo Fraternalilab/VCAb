@@ -1045,7 +1045,7 @@ def extract_hit_bl_result_for_shiny (bl_df,horltype,new_bl_name,df):
         else:
             allele=allele_info.split(":")[0]
 
-        sub_bl_df=pd.DataFrame(bl_df.loc[(bl_df["iden_code"]==iden_code)&(bl_df["matched_alleles"]==allele)].iloc[0,]).T
+        sub_bl_df=pd.DataFrame(bl_df.loc[(bl_df["iden_code"]==iden_code)&(bl_df["matched_alleles"]==allele)].iloc[0,:]).T
 
         new_bl_lst.append(sub_bl_df)
     new_bl=pd.concat(new_bl_lst)
@@ -1187,6 +1187,7 @@ ff_vcab=add_disulfide_info(ff_vcab,"../pdb_struc/c_pdb/")
 ff_vcab.to_csv("new_vcab.csv")
 
 # Collapse bl_result to make the file smaller and the shiny app to load the file faster:
+hbl.to_csv('hbl.csv')
 extract_hit_bl_result_for_shiny (hbl,"Htype","./blast_result/best_h_seq_bl_result",ff_vcab)
 extract_hit_bl_result_for_shiny (lbl,"Ltype","./blast_result/best_l_seq_bl_result",ff_vcab)
 
