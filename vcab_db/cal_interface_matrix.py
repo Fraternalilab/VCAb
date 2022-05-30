@@ -1,6 +1,3 @@
-# To calculate the interface difference index and generate a mtrix holding this value
-# Dongjun Guo, Apr.2022
-
 import numpy as np
 import pandas as pd
 import Bio.PDB
@@ -8,7 +5,7 @@ from Bio import AlignIO
 import os
 import math
 from datetime import date
-
+import json
 
 # PART 1. read pops result_lstdef replace_back_T_F_chain (o_df):
 def replace_back_T_F_chain (o_df):
@@ -147,7 +144,6 @@ def map_profile_aln_to_residue_info (iden_code,chainType,ref_profile_dir,aln_out
     ## {aln_pos_in_pairwise_profile_aln:[res_obj,if_interface_residue]}
     ### if char at aln_pos is a gap, then res_obj=np.nan
     # aln is the pairwise_profile_aln of H_coor_seq/L_coor_seq to the corresponding_profile
-
     # Assign different values to different chainTypes (H/L)
     chainTypeNum=0
     aln_fn=f"{aln_out_dir}/{iden_code}_HC_coordinate_seq_aln_to_ref.aln"
@@ -246,6 +242,9 @@ def exclude_mtrx_not_calculated(o_df,fn):
 
 def cal_distance_between_matrix (ab1,ab2,mtrx_dir):
     # both ab1 and ab2 are iden_code
+    if os.path.exists(f"{mtrx_dir}/{ab1}_interface_dist_mtrx.txt") is False or \
+        os.path.exists(f"{mtrx_dir}/{ab2}_interface_dist_mtrx.txt") is False:
+        return np.nan
     m1=np.loadtxt(f"{mtrx_dir}/{ab1}_interface_dist_mtrx.txt",dtype=float)
     m2=np.loadtxt(f"{mtrx_dir}/{ab2}_interface_dist_mtrx.txt",dtype=float)
     if m1.shape==m2.shape:
@@ -265,6 +264,34 @@ def generate_dm_of_interface_dm(df,mtrx_dir):
             ab2=df.loc[col,"iden_code"]
             result[row,col]=cal_distance_between_matrix (ab1,ab2,mtrx_dir)
     labels={i:list(df.loc[i,["iden_code","Htype","Ltype"]].values) for i in df.index}
+    return result,labels
+
+def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
+    # df: vcab, old_mtrx_df_fn: the csv file name of old dm_of_dm
+    result = np.zeros((len(df), len(df)), np.float)
+    old_mtrx_df=pd.read_csv(old_mtrx_df_fn).drop(columns=["Unnamed: 0"])
+
+    old_mtrx=old_mtrx_df.to_numpy()
+
+    # incorporate the old matrix as the part of new results
+    result[:old_mtrx.shape[0],:old_mtrx.shape[1]]=old_mtrx
+
+    # Find the newly added VCAb entries
+    old_abs=list(old_mtrx_df.columns)
+    new_abs=list(df["iden_code"].values)
+    added_abs=[i for i in new_abs if i not in old_abs]
+
+    new_abs_ordered=old_abs+added_abs # order the abs: old_abs first, then added_abs
+
+    for row,ab1 in enumerate(new_abs_ordered):
+        for col,ab2 in enumerate(new_abs_ordered):
+            if row < len(old_abs) and col < len(old_abs):
+                # skip the values in old matrix
+                continue
+            if col > row:
+                result[row,col]=cal_distance_between_matrix (ab1,ab2,mtrx_dir)
+
+    labels={i:[new_abs_ordered[i]]+list(df.loc[df["iden_code"]==new_abs_ordered[i],["Htype","Ltype"]].values[0]) for i in range(len(new_abs_ordered))}
     return result,labels
 
 ######### APPLY THE FUNCTIONS ##############
@@ -292,8 +319,16 @@ with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
 # Calculate the distance matrix of dm (matrix of the interface distance index)
 flt_vcab=exclude_mtrx_not_calculated(vcab,"../ch1_cl_interface_matrix/mtrx_not_calculated.txt")
 # exclude the VCAb entries with no interface matrix (mainly because the POPSComp result is not available for the solution scattering method)
-dm,ab_info_label=generate_dm_of_interface_dm(flt_vcab,mtrx_out_dir)
+
+dm,ab_info_label=("","")
+# if file exists, update the matrix; else, calculate the matrix from scratch:
+if os.path.exists("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"):
+    dm,ab_info_label=update_dm_of_interface_dm(vcab,"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv",mtrx_out_dir)
+else:
+    dm,ab_info_label=generate_dm_of_interface_dm(vcab,mtrx_out_dir)
 np.savetxt(f"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.txt",dm,fmt='%10.5f')
+with open('../ch1_cl_interface_matrix/dm_of_dm_label.json', 'w') as fp:
+    json.dump(ab_info_label, fp)
 
 dm_df=pd.DataFrame(dm,columns=[ab_info_label[k][0] for k in ab_info_label.keys()],index=[ab_info_label[k][0] for k in ab_info_label.keys()])
 dm_df.to_csv("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv")
