@@ -309,28 +309,62 @@ def generate_bl_result (q_seqs,bl_db,bl_out_name,out_dir):
     df=bl_result.copy() # no specific reason, just want to type fewer characters/or in case I want to output the initial bl_result
     df["iden_code"]=list(map(lambda x: x.split("-")[0],df["qseqid"]))
 
-    df["chain_type"]=list(map(lambda x: chain_type_names[x.split("*")[0]],df["sseqid"])) # In the format of "IgG1"
+    try:
+        df["chain_type"]=list(map(lambda x: chain_type_names[x.split("*")[0]],df["sseqid"])) # In the format of "IgG1"
+    except:
+        df["gene"]=list(map(lambda x: x.split("*")[0],df["sseqid"])) # This is for the blast result for V region
     df["matched_alleles"]=list(df["sseqid"]) # In the format of "IgG1"
     df.to_csv(f"{out_dir}/{bl_out_name}_result.csv")
     return df
 
 
-def found_dom_exchanged_ab(cross_bl,df):
-    # To found the possiblr domain_exchanged antibody
-    # df: vcab
 
-    # collapse the cross_bl: only extract the top hits
-    c_cross_bl_lst=[]
-    iden_code=list(set(cross_bl["iden_code"]))
-    for i in iden_code:
-        sub=pd.DataFrame(cross_bl.loc[cross_bl["iden_code"]==i].iloc[0,]).T
-        c_cross_bl_lst.append(sub)
-    c_cross_bl=pd.concat(c_cross_bl_lst)
+def found_special_cases_ab (vhbl,vlbl,hcbl,lcbl,cross_bl,df):
+    # To found:
+    # 1. the possible domain_exchanged antibody
+    # 2. entries with sequence possibly from other species
+    # df: vcab, cross_bl: blast heavy against light in order to found possibly dom_exchanged antibody
 
-    flt=c_cross_bl.loc[c_cross_bl["ident"]>50]
-    iden_code=flt["iden_code"].values
+    best_vhbl=extract_hit_bl_result (vhbl,"ident")
+    best_vlbl=extract_hit_bl_result (vlbl,"ident")
+    best_hcbl=extract_hit_bl_result (hcbl,"ident")
+    best_lcbl=extract_hit_bl_result (lcbl,"ident")
 
-    df["special_cases"]=[str(df.loc[i,"iden_code"] in iden_code) for i in df.index]
+    c_cross_bl=extract_hit_bl_result (cross_bl,"")
+
+    result=[]
+    for i in df.index:
+        iden_code=df.loc[i,"iden_code"]
+        vh_ident=best_vhbl.loc[best_vhbl["iden_code"]==iden_code]
+        vl_ident=best_vlbl.loc[best_vlbl["iden_code"]==iden_code]
+        hc_ident=best_hcbl.loc[best_hcbl["iden_code"]==iden_code]
+        lc_ident=best_lcbl.loc[best_lcbl["iden_code"]==iden_code]
+
+        c_cross_ident=c_cross_bl.loc[c_cross_bl["iden_code"]==iden_code]
+
+        sub_result=""
+        if len(vh_ident)!=0 and len(vl_ident)!=0:
+            vh_ident_val=vh_ident["ident"].item()
+            vl_ident_val=vl_ident["ident"].item()
+            if vh_ident_val < 80 or  vl_ident_val < 80:
+                sub_result=f"V region sequence identity to human reference is low, indicating sequence possibly from other species (VH:{vh_ident_val}, VL:{vl_ident_val})"
+        else:
+            sub_result="No significant match found to human reference V sequence, indicating sequence possibly from other species"
+
+        if len(hc_ident)!=0 and len(lc_ident)!=0:
+            hc_ident_val=hc_ident["ident"].item()
+            lc_ident_val=lc_ident["ident"].item()
+            if hc_ident_val < 70 or lc_ident_val < 70:
+                sub_result=f"C region sequence identity to human reference is low, indicating sequence possibly from other species (CH:{hc_ident_val}, CL:{lc_ident_val})"
+        else:
+            sub_result="No significant match found to human reference C sequence, indicating sequence possibly from other species"
+
+        if len(c_cross_ident)!=0:
+            if c_cross_ident["ident"].item() >50:
+                sub_result="possibly domain_exchanged antibody"
+
+        result.append(sub_result)
+    df["special_cases"]=result
     return df
 
 def include_collapsed_alleles(allele,c_alleles_dict):
@@ -1025,7 +1059,7 @@ def add_disulfide_info(df,c_pdb_dir):
     df["disulfide_bond"]=disulfide_info
     return df
 
-def extract_hit_bl_result (bl):
+def extract_hit_bl_result (bl,standard=""):
     # extract the best (the first one by the default order given by blast) hit in bl_result
     # bl: the blast result dataframe to be extracted
     # Note: the difference between this function and "extract_hit_bl_result_for_shiny":
@@ -1033,10 +1067,16 @@ def extract_hit_bl_result (bl):
     ## The reason why "extract_hit_bl_result_for_shiny" need the chain type is because when generating the sequence coverage plot in shiny app, we want to compare the author_seq and coor_seq with the same allele
     ## Because some coor_seq lacking some fragment compared with author_seq, this minor difference might lead to different hit alleles when we blast them against the ref_alleles
 
+    # standard can only be "default" or "ident"
     c_bl_lst=[]
     iden_code=list(set(bl["iden_code"]))
     for i in iden_code:
+        # extract the first hit as the best hit:
         sub=pd.DataFrame(bl.loc[bl["iden_code"]==i].iloc[0,]).T
+        # extract the one with highest identity as the best hit:
+        if standard=="ident":
+            sub=bl.loc[bl["iden_code"]==i].sort_values(by=["ident"], ascending=False)
+            sub=pd.DataFrame(sub.iloc[0,]).T
         c_bl_lst.append(sub)
     c_bl=pd.concat(c_bl_lst)
 
@@ -1110,9 +1150,15 @@ ltqseqs="../seq_db/vcab_db/L_coordinate_seq.fasta"
 h_ref_db="../seq_db/ref_db/all_alleles/H_chains/unique_alleles.fasta"
 l_ref_db="../seq_db/ref_db/all_alleles/L_chains/unique_light_alleles.fasta"
 
+vh_ref_db="../seq_db/ref_db/all_alleles/v_gene/heavy/unique_ighv.fasta"
+vl_ref_db="../seq_db/ref_db/all_alleles/v_gene/light/unique_vl.fasta"
+
 # Do the blast:
 hbl=generate_bl_result (hfqseqs,h_ref_db,"h_seq_bl","./blast_result")
 lbl=generate_bl_result (lfqseqs,l_ref_db,"l_seq_bl","./blast_result")
+
+vhbl=generate_bl_result (hfqseqs,vh_ref_db,"vh_seq_bl","./blast_result")
+vlbl=generate_bl_result (lfqseqs,vl_ref_db,"vl_seq_bl","./blast_result")
 
 hcoorbl=generate_bl_result (htqseqs,h_ref_db,"h_coordinate_seq_bl","./blast_result")
 lcoorbl=generate_bl_result (ltqseqs,l_ref_db,"l_coordinate_seq_bl","./blast_result")
@@ -1124,9 +1170,10 @@ h_coor_cross_bl=generate_bl_result (htqseqs,l_ref_db,"cross_bl_h_coor_seq","./bl
 l_author_cross_bl=generate_bl_result (lfqseqs,h_ref_db,"cross_bl_l_author_seq","./blast_result")
 h_author_cross_bl=generate_bl_result (hfqseqs,l_ref_db,"cross_bl_h_author_seq","./blast_result")
 
-cHL_dom_swap_labeled=found_dom_exchanged_ab(l_coor_cross_bl,cHL)
+#cHL_dom_swap_labeled=found_dom_exchanged_ab(l_coor_cross_bl,cHL)
+cHL_dom_swap_labeled=found_special_cases_ab(vhbl,vlbl,hbl,lbl,l_coor_cross_bl,cHL)
 # For test:
-cHL_dom_swap_labeled.to_csv("cHL_dom_swap_labeled.csv")
+cHL_dom_swap_labeled.to_csv("special_cases_labeled.csv")
 
 """# For test:
 hbl=pd.read_csv("./blast_result/h_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
