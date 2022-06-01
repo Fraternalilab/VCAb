@@ -354,7 +354,7 @@ def found_special_cases_ab (vhbl,vlbl,hcbl,lcbl,cross_bl,df):
         if len(hc_ident)!=0 and len(lc_ident)!=0:
             hc_ident_val=hc_ident["ident"].item()
             lc_ident_val=lc_ident["ident"].item()
-            if hc_ident_val < 70 or lc_ident_val < 70:
+            if hc_ident_val < 90 or lc_ident_val < 90:
                 sub_result=f"C region sequence identity to human reference is low, indicating sequence possibly from other species (CH:{hc_ident_val}, CL:{lc_ident_val})"
         else:
             sub_result="No significant match found to human reference C sequence, indicating sequence possibly from other species"
@@ -362,6 +362,7 @@ def found_special_cases_ab (vhbl,vlbl,hcbl,lcbl,cross_bl,df):
         if len(c_cross_ident)!=0:
             if c_cross_ident["ident"].item() >50:
                 sub_result="possibly domain_exchanged antibody"
+
 
         result.append(sub_result)
     df["special_cases"]=result
