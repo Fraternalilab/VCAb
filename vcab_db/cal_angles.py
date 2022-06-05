@@ -363,5 +363,6 @@ if __name__=="__main__":
 
     vcab["elbow_angle"]=elbow_angles
     vcab["CH1-CL_interface_angle"]=ch1_cl_angles
+    vcab=vcab.rename(columns={'heavy_subclass':"heavy_vfamily",'light_subclass':"light_vfamily"})
 
     vcab.to_csv("final_vcab.csv")
