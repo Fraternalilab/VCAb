@@ -291,7 +291,7 @@ def extract_domain_information_from_imgt_fasta(fn):
     return domains
 
 imgt_h_original="../seq_db/ref_db/all_alleles/H_chains/imgt_original.fasta"
-imgt_l_original="/Users/dongjung/Downloads/vcab/seq_db/ref_db/all_alleles/L_chains/imgt_original.fasta"
+imgt_l_original="../seq_db/ref_db/all_alleles/L_chains/imgt_original.fasta"
 
 h_domains=extract_domain_information_from_imgt_fasta(imgt_h_original)
 l_domains=extract_domain_information_from_imgt_fasta(imgt_l_original)
@@ -538,11 +538,40 @@ def get_carbohydrate_info_from_pdbe(pdb):
 
 
 ### FUNCTIONS DESIGNED FOR DOMAIN_SWAPPED_AB: ###
-def extract_domain_from_dom_swapped_ab(iden_code,bl,crbl,h_domains,l_domains):
+def extract_hit_bl_result (bl,standard=""):
+    # extract the best (the first one by the default order given by blast or the best identity) hit in bl_result for each iden_code
+    # bl: the blast result dataframe to be extracted
+    # Note: the difference between this function and "extract_hit_bl_result_for_shiny":
+    ## in this function, the chain type would not be needed. This is mainly for the domain extraction step in domain-swaaped antibodies.
+    ## The reason why "extract_hit_bl_result_for_shiny" need the chain type is because when generating the sequence coverage plot in shiny app, we want to compare the author_seq and coor_seq with the same allele
+    ## Because some coor_seq lacking some fragment compared with author_seq, this minor difference might lead to different hit alleles when we blast them against the ref_alleles
+
+    # standard can only be "default" or "ident"
+    # because this function is for extractting domains in dom_exchanged ab, thus the standard is "" in this file.
+    c_bl_lst=[]
+    iden_code=list(set(bl["iden_code"]))
+    for i in iden_code:
+        # extract the first hit as the best hit:
+        sub=pd.DataFrame(bl.loc[bl["iden_code"]==i].iloc[0,]).T
+        # extract the one with highest identity as the best hit:
+        if standard=="ident":
+            sub=bl.loc[bl["iden_code"]==i].sort_values(by=["ident"], ascending=False)
+            sub=pd.DataFrame(sub.iloc[0,]).T
+        c_bl_lst.append(sub)
+    c_bl=pd.concat(c_bl_lst)
+
+    return c_bl
+
+def extract_domain_from_dom_swapped_ab(iden_code,o_bl,o_crbl,h_domains,l_domains):
     # bl,crbl should belongs to the same chain sequence
     # bl: straight blast to the corresponding ref profile (e.g. H chain seq to H ref seqs)
     # crbl: cross blast to the other ref profile (e.g. H chain seq to L ref seqs)
-    # both bl and crbl should be the collpased blast result. So, the len(bl_info)==len(crbl_info)==1
+    # both o_bl and o_crbl should be the collpased blast result.
+
+    # collapse o_bl and o_crbl:
+    ## So, the len(bl_info)==len(crbl_info)==1
+    bl=extract_hit_bl_result(o_bl)
+    crbl=extract_hit_bl_result(o_crbl)
     bl_info=bl.loc[bl["iden_code"]==iden_code]
     crbl_info=crbl.loc[crbl["iden_code"]==iden_code]
 
@@ -608,8 +637,8 @@ def extract_domain_from_dom_swapped_ab(iden_code,bl,crbl,h_domains,l_domains):
 def annotations_for_dom_swapped_ab (iden_code,hfbl,hf_crbl,lfbl,lf_crbl,htbl,ht_crbl,ltbl,lt_crbl,h_domains,l_domains,c_h_alleles,c_l_alleles):
 
     # Part1. Identify chain types:
-    __,__,__,__,__,hf_vcb,h_ctype=extract_domain_from_dom_swapped_ab(iden_code,htbl,ht_crbl,h_domains,l_domains)
-    __,__,__,__,__,lf_vcb,l_ctype=extract_domain_from_dom_swapped_ab(iden_code,ltbl,lt_crbl,h_domains,l_domains)
+    __,__,__,__,__,hf_vcb,h_ctype=extract_domain_from_dom_swapped_ab(iden_code,hfbl,hf_crbl,h_domains,l_domains)
+    __,__,__,__,__,lf_vcb,l_ctype=extract_domain_from_dom_swapped_ab(iden_code,lfbl,lf_crbl,h_domains,l_domains)
     htype,ltype,lsubtype,alter_htype,alter_ltype=("","","","","")
 
     def mergeDictionary(dict_1, dict_2):
@@ -749,7 +778,7 @@ def generate_final_db (o_df,hfbl,lfbl,htbl,ltbl,hf_crbl,lf_crbl,ht_crbl,lt_crbl,
         if_special_case=df.loc[i,"special_cases"]
 
         this_h_info,this_l_info,this_l_subtype,this_alter_h_info,this_alter_l_info,this_hf_vcb,this_lf_vcb,this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb,this_lt_vcb=[""]*12
-        if if_special_case=="True" or if_special_case==True:
+        if type(if_special_case)==str and "possibly domain_exchanged antibody" in if_special_case:
             this_h_info,this_l_info,this_l_subtype,this_alter_h_info,this_alter_l_info,this_hf_vcb,this_lf_vcb,this_aln_info,this_domain_info,this_struc_cov,this_ht_vcb,this_lt_vcb=annotations_for_dom_swapped_ab (iden_code,hfbl,hf_crbl,lfbl,lf_crbl,htbl,ht_crbl,ltbl,lt_crbl,h_domains,l_domains,c_h_alleles,c_l_alleles)
         else:
 
@@ -1060,39 +1089,22 @@ def add_disulfide_info(df,c_pdb_dir):
     df["disulfide_bond"]=disulfide_info
     return df
 
-def extract_hit_bl_result (bl,standard=""):
-    # extract the best (the first one by the default order given by blast) hit in bl_result
-    # bl: the blast result dataframe to be extracted
-    # Note: the difference between this function and "extract_hit_bl_result_for_shiny":
-    ## in this function, the chain type would not be needed. This is mainly for the domain extraction step in domain-swaaped antibodies.
-    ## The reason why "extract_hit_bl_result_for_shiny" need the chain type is because when generating the sequence coverage plot in shiny app, we want to compare the author_seq and coor_seq with the same allele
-    ## Because some coor_seq lacking some fragment compared with author_seq, this minor difference might lead to different hit alleles when we blast them against the ref_alleles
 
-    # standard can only be "default" or "ident"
-    c_bl_lst=[]
-    iden_code=list(set(bl["iden_code"]))
-    for i in iden_code:
-        # extract the first hit as the best hit:
-        sub=pd.DataFrame(bl.loc[bl["iden_code"]==i].iloc[0,]).T
-        # extract the one with highest identity as the best hit:
-        if standard=="ident":
-            sub=bl.loc[bl["iden_code"]==i].sort_values(by=["ident"], ascending=False)
-            sub=pd.DataFrame(sub.iloc[0,]).T
-        c_bl_lst.append(sub)
-    c_bl=pd.concat(c_bl_lst)
-
-    return c_bl
 
 def extract_hit_bl_result_for_shiny (bl_df,horltype,new_bl_name,df):
     # extract only the bl_result of the hit chain type (when the hit chain type is known)
     # bl_df: the blast result dataframe to be extracted
     # horltype can only be "Htype" or "Ltype"
+    # df: vcab
     new_bl_lst=[]
     for i in df.index:
         iden_code=df.loc[i,"iden_code"]
         ctype=df.loc[i,horltype]
         allele_info=ctype.split("(")[1]
-        allele=allele_info.split(",")[0]
+        if "," in allele_info:
+            allele=allele_info.split(",")[0]
+        else:
+            allele=allele_info.split(":")[0]
 
         sub_bl_df=pd.DataFrame(bl_df.loc[(bl_df["iden_code"]==iden_code)&(bl_df["matched_alleles"]==allele)].iloc[0,]).T
 
@@ -1187,27 +1199,15 @@ h_coor_cross_bl=pd.read_csv("./blast_result/cross_bl_h_coor_seq_result.csv").dro
 l_author_cross_bl=pd.read_csv("./blast_result/cross_bl_l_author_seq_result.csv").drop(columns=["Unnamed: 0"])
 h_author_cross_bl=pd.read_csv("./blast_result/cross_bl_h_author_seq_result.csv").drop(columns=["Unnamed: 0"])"""
 
-# Get the collapsed bl_result:
-htbl=extract_hit_bl_result(hcoorbl)
-ltbl=extract_hit_bl_result(lcoorbl)
-
-hfbl=extract_hit_bl_result(hbl)
-lfbl=extract_hit_bl_result(lbl)
-
-ht_crbl=extract_hit_bl_result (h_coor_cross_bl)
-lt_crbl=extract_hit_bl_result (l_coor_cross_bl)
-
-hf_crbl=extract_hit_bl_result (h_author_cross_bl)
-lf_crbl=extract_hit_bl_result (l_author_cross_bl)
 
 """# For test:
 cHL_dom_swap_labeled=pd.read_csv("cHL_dom_swap_labeled.csv").drop(columns=["Unnamed: 0"])
 cHL_dom_swap_labeled=cHL_dom_swap_labeled.rename(columns={"domain_swapped_ab":"special_cases"})"""
 collapsed_h_alleles=json.load(open("../seq_db/ref_db/all_alleles/H_chains/collapsed_h_alleles.json","r"))
 collapsed_l_alleles=json.load(open("../seq_db/ref_db/all_alleles/L_chains/collapsed_l_alleles.json","r"))
-total_vcab=generate_final_db (cHL_dom_swap_labeled,hfbl,lfbl,htbl,ltbl,hf_crbl,lf_crbl,ht_crbl,lt_crbl,h_domains,l_domains,collapsed_h_alleles,collapsed_l_alleles)
+total_vcab=generate_final_db (cHL_dom_swap_labeled,hbl,lbl,hcoorbl,lcoorbl,h_author_cross_bl,l_author_cross_bl,h_coor_cross_bl,l_coor_cross_bl,h_domains,l_domains,collapsed_h_alleles,collapsed_l_alleles)
 # For test:
-total_vcab.to_csv("test_vcab.csv")
+# total_vcab.to_csv("test_vcab.csv")
 
 # Extract unusual cases:
 vcab,unusual=find_unusual_cases (total_vcab)
