@@ -307,11 +307,12 @@ os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
 int_mtrx_not_calculated=[]
 for i in vcab.index:
     iden_code=vcab.loc[i,"iden_code"]
-    try:
-        interface_mtrx=generate_distance_matrix(iden_code,ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,vcab)
-        np.savetxt(f"{mtrx_out_dir}/{iden_code}_interface_dist_mtrx.txt",interface_mtrx,fmt='%10.5f')
-    except:
-        int_mtrx_not_calculated.append(iden_code)
+    if os.path.exists(f"{mtrx_out_dir}/{iden_code}_interface_dist_mtrx.txt") is False:
+        try:
+            interface_mtrx=generate_distance_matrix(iden_code,ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,vcab)
+            np.savetxt(f"{mtrx_out_dir}/{iden_code}_interface_dist_mtrx.txt",interface_mtrx,fmt='%10.5f')
+        except:
+            int_mtrx_not_calculated.append(iden_code)
 
 with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
     f.write(",".join(int_mtrx_not_calculated))

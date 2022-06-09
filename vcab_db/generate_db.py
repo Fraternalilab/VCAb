@@ -97,6 +97,9 @@ def get_seq_from_pdbe(pdb,c):
                 except KeyError as e:
                     fseq="mol: Error - sequence can't be accessed by API"
                     print (f"This sequence can't be downloaded via PDBe API. PDB: {pdb}, ChainID:{chainid}. \n Error message: KeyError:{e}. \n Go to https://www.ebi.ac.uk/pdbe/api/doc/ for details")
+                #check if sequence contains (UNK) (JN, 2022-June-09)
+                if 'UNK' in fseq:
+                    fseq=fseq.replace('(UNK)','')
 
                 #check if sequence begins with (PCA):
                 if '(PCA)' in fseq:
@@ -1279,5 +1282,5 @@ os.system("makeblastdb -in ../seq_db/vcab_db/all_v_seq.fasta -dbtype prot")
 os.system("makeblastdb -in ../seq_db/vcab_db/all_full_seq.fasta -dbtype prot")
 
 # Run cal_angles.py & cal_interface_matrix.py
-os.system("python3 cal_angles.py")
-os.system("python3 cal_interface_matrix.py")
+#os.system("python3 cal_angles.py")
+#os.system("python3 cal_interface_matrix.py")
