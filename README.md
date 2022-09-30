@@ -25,8 +25,9 @@ In order to run this code, BLAST must be installed in the command line. Please g
 | ---- | ------- | ------- |
 |`generate_db.py`| pandas | 1.2.1|
 |`generate_db.py`| numpy | 1.19.2|
-|`generate_db.py`| Bio | 1.78|
+|`generate_db.py`| Bio | 1.79|
 |`generate_db.py`| argparse | 1.1|
+|`get_paired_seq.py`|anarci_vc|modified from anarci, see [github page](https://github.com/Fraternalilab/ANARCI_vc)|
 |`app.R`| shiny | 1.6.0|
 |`app.R`| DT |0.17|
 |`app.R`| rBLAST |0.99.2|
