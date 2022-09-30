@@ -1,13 +1,146 @@
 import numpy as np
 import pandas as pd
 import Bio.PDB
-from Bio import AlignIO
+from Bio import pairwise2
+from Bio.SubsMat import MatrixInfo as matlist
+from Bio.SeqUtils import seq1
+
 import os
 import math
 from datetime import date
 import json
 
-# PART 1. read pops result_lstdef replace_back_T_F_chain (o_df):
+imgt_numbering=['1H',
+ '1G',
+ '1F',
+ '1E',
+ '1D',
+ '1C',
+ '1B',
+ '1A',
+ '1',
+ '2',
+ '3',
+ '4',
+ '5',
+ '6',
+ '7',
+ '8',
+ '9',
+ '10',
+ '11',
+ '12',
+ '13',
+ '14',
+ '15',
+ '15A',
+ '15B',
+ '15C',
+ '16',
+ '17',
+ '18',
+ '19',
+ '20',
+ '21',
+ '22',
+ '23',
+ '24',
+ '25',
+ '26',
+ '27',
+ '28',
+ '29',
+ '30',
+ '31',
+ '34',
+ '35',
+ '36',
+ '37',
+ '38',
+ '39',
+ '40',
+ '41',
+ '42',
+ '43',
+ '44',
+ '45',
+ '45A',
+ '45B',
+ '45C',
+ '45D',
+ '45E',
+ '45F',
+ '45G',
+ '77',
+ '78',
+ '79',
+ '80',
+ '81',
+ '82',
+ '83',
+ '84',
+ '84A',
+ '84B',
+ '84C',
+ '84D',
+ '84E',
+ '84F',
+ '84G',
+ '85G',
+ '85F',
+ '85E',
+ '85D',
+ '85C',
+ '85B',
+ '85A',
+ '85',
+ '86',
+ '87',
+ '88',
+ '89',
+ '90',
+ '91',
+ '92',
+ '93',
+ '94',
+ '95',
+ '96',
+ '96A',
+ '96B',
+ '97',
+ '98',
+ '99',
+ '100',
+ '101',
+ '102',
+ '103',
+ '104',
+ '105',
+ '106',
+ '107',
+ '108',
+ '109',
+ '110',
+ '111',
+ '112',
+ '113',
+ '114',
+ '115',
+ '116',
+ '117',
+ '118',
+ '119',
+ '120',
+ '121',
+ '122',
+ '123',
+ '124',
+ '125',
+ '126',
+ '127',
+ '128']
+
+# 1. read pops result_lst
 def replace_back_T_F_chain (o_df):
     df=o_df.copy()
     for c,i in enumerate(df['Chain']):
@@ -36,47 +169,7 @@ def read_pops_file(iden_code,pops_dir):
     l_df.reset_index(inplace=True)
     return h_df,l_df
 
-# Part 2. Run the pairwise profile aln
-def run_pairwise_profile_aln(iden_code,chainType,ref_profile_dir,out_dir,df):
-    # align the C_coor sequence to the reference profile
-    ## Note: if the antibody is the Fab, ref_profile of CH1 seqs is used
-    ## if the antibody is the whole antibody, ref_profile of the sequence covering all the domains is used
-    ## in summary, the coverage of the ref_profile should corresponds to the structural coverage of the antibody
-    # ref_profile: the name of the ref_profile
-    # chainType can only be "H" or "L"
-
-    col_name=""
-    ref_profile=""
-
-    struc_cov=df.loc[df["iden_code"]==iden_code,"Structural Coverage"].item()
-    # assign different C_coor_seq and ref_profile to different chainType(H/L) and structural coverage (Fab/full antibody)
-    if chainType.lower()=="h":
-        col_name="HC_coordinate_seq"
-        ref_profile=f"ref_profile/unique_alleles_CH1_aln_profile"
-
-        if struc_cov=='full antibody':
-            ref_profile=f"ref_profile/unique_alleles_aln_profile"
-
-    if chainType.lower()=="l":
-        col_name="LC_coordinate_seq"
-        ref_profile=f"ref_profile/unique_light_aln_profile"
-
-    c_coor_seq=df.loc[df["iden_code"]==iden_code,col_name].item()
-
-    seq_id=f"{iden_code}_{col_name}"
-    with open(f"{out_dir}/{seq_id}.fasta","w") as f:
-        f.write(f">{seq_id}\n")
-        f.write(f"{c_coor_seq}\n")
-
-    # change command string to use docker container version of tcoffee as I can't install tcoffee locally on the server (JN, 22-Apr-2022)
-    out_dir = out_dir.replace("..", "/data0/sa_k2031500/vcab")
-    out_dir = out_dir.replace("aln_results/", "")
-    cmd_string=f"docker run --rm -v {out_dir}:/data pegi3s/tcoffee t_coffee /data/aln_results//{seq_id}.fasta -profile /data/{ref_profile} -outfile /data/aln_results//{seq_id}_aln_to_ref.aln -in Mclustalw_pair"
-    #  t_coffee {out_dir}/{seq_id}.fasta -profile={ref_profile} -outfile {out_dir}/{seq_id}_aln_to_ref.aln -in Mclustalw_pair"
-    os.system(cmd_string)
-
-
-# Part 3. Make sure the interface matrix generated are of the same size
+# 2. Convert positions between pure_seq & alned_seq (seq with gaps)
 def map_pure_seq_pos_to_aln_pos (pure_pos,aln_seq):
     # return the aln_pos of the corresponding pure_seq
     # aln_seq: the seq from the aln object, which containing the gaps
@@ -101,126 +194,97 @@ def map_aln_pos_to_pure_seq_pos (aln_pos,aln_seq):
     pure_seq_pos=len(pure_str)-1
     return pure_seq_pos
 
-def convert_all_domain_profile_to_CH1_profile (vcab_ad_aln_res_info,all_domain_profile,CH1_profile,seq_title):
-    # Make sure the interface matrix generated from Fab and full_ig structure are of the same size
-    # vcab_ad_aln_res_info is the ad_aln including all domains
-    # seq_title is the type of the ref_seq. e.g. IGHE
-    ad_aln=AlignIO.read(all_domain_profile,"clustal")
-    ch1_aln=AlignIO.read(CH1_profile,"clustal")
-    seq_in_ad_aln=str([ad_aln[i] for i in range(len(ad_aln)) if seq_title in ad_aln[i].id][0].seq)
-    seq_in_ch1_aln=str([ch1_aln[i] for i in range(len(ch1_aln)) if seq_title in ch1_aln[i].id][0].seq)
-
-    ad_aln_pos_to_ch1_aln={}
-    # the dict contaning the conversion between the aln_pos (seq_in_ad_aln) and aln_pos (seq_in_ch1_aln)
-    for k in range(len(seq_in_ad_aln)):
-        # k is acturally the aln_pos in seq_in_ad_aln
-        ad_aln_char=seq_in_ad_aln[k]
-        if ad_aln_char !="-":
-            ref_seq_pure_pos=map_aln_pos_to_pure_seq_pos (k,seq_in_ad_aln)
-            ch1_aln_pos=map_pure_seq_pos_to_aln_pos (ref_seq_pure_pos,seq_in_ch1_aln)
-            ad_aln_pos_to_ch1_aln[k]=ch1_aln_pos
-
-    results={}
-    n_vcab_res_info={k:v for k,v in vcab_ad_aln_res_info.items() if v!=[np.nan,np.nan]}
-    for k in n_vcab_res_info.keys():
-        if k in ad_aln_pos_to_ch1_aln.keys():
-            # only consider the vcab residues which aligns to the ref_seq
-            # ignore cases where the gap in ref_seq is generated when vcab_seq is aligned to ref_seq
-            n_k=ad_aln_pos_to_ch1_aln[k]
-            if n_k != None:
-                # exclude the residues in the ad_aln but not in the
-                results[n_k]=vcab_ad_aln_res_info[k]
-
-    # fill the gaps information to the results dict
-    for n_k in range(len(str(ch1_aln[0].seq))):
-        if n_k not in results.keys():
-            results[n_k]=[np.nan,np.nan]
-    return dict(sorted(results.items()))
-
-
-def map_profile_aln_to_residue_info (iden_code,chainType,ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,df):
-    # Collect the informations of residues/gaps of CH1/CL, which later would be the axis of the matrix
-    # returned results is a dict, with items in this format:
-    ## {aln_pos_in_pairwise_profile_aln:[res_obj,if_interface_residue]}
-    ### if char at aln_pos is a gap, then res_obj=np.nan
-    # aln is the pairwise_profile_aln of H_coor_seq/L_coor_seq to the corresponding_profile
-    # Assign different values to different chainTypes (H/L)
+# 3. Convert IMGT numbering(author_seq) into pure_position(coor_seq)
+def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_dir,num_scheme=imgt_numbering):
+    """
+    Returned a list in this format {imgt_numbering:[res_obj, if_interface_residue]}
+    :args chainType: can only be "H" or "L"
+    :args num_df: the df outputed by anarci_c containing the C_numbering results
+    :args pdb_dir: the directory of the c_pdb files
+    :args num_scheme: the list containing all the numbering we want to included into the interface matrix
+    """
+    pdbid=iden_code.split("_")[0]
     chainTypeNum=0
-    aln_fn=f"{aln_out_dir}/{iden_code}_HC_coordinate_seq_aln_to_ref.aln"
     if chainType.lower()=="l":
         chainTypeNum=1
-        aln_fn=f"{aln_out_dir}/{iden_code}_LC_coordinate_seq_aln_to_ref.aln"
+    chain=iden_code.split("_")[1][chainTypeNum]
+    id_code=f"{pdbid}_{chain}"
 
-    # Step 0. Generate pairwise profile aln file and read the file
-    run_pairwise_profile_aln(iden_code,chainType,ref_profile_dir,aln_out_dir,df)
-    aln=AlignIO.read(aln_fn,"clustal")
+    num_info=num_df.loc[num_df["Id"]==id_code]
+    pure_num_info0=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0] not in["deleted","-"])]
+    # pure_num_info0 removes positions generating gaps(both "deleted" and. "-") in the coor_seq
+    pure_num_info={numbering:[pure_pos,res] for pure_pos,(numbering,res) in enumerate(pure_num_info0)}
 
-    # Step 1. Clean the aln: remove the gap-column generated in the ref_profile during the alignment
-    ref_part=aln[1:] # The ref_profile part in the alignment
-    ref_seq_num=len(ref_part) # The number of the sequence in the alignment of the ref_part (row_num)
-    seq_len=len(ref_part[0].seq) # The seq_length(col_num) of in the aln==len(seq) in ref_part
+    #return pure_num_info
+    existed_numbering=list(pure_num_info.keys())
+    num_seq_frag="".join([i[1] for i in list(pure_num_info.values())])
 
-    n_aln=aln[:,0:1] # initialize the new_aln with the first column of aln (which would be deleted later)
-    for col in range(seq_len):
-        ref_aln_col=ref_part[:,col]
-        aln_col_with_id=aln[:,col:col+1]
-        if ref_aln_col!="-"*ref_seq_num:
-            # exclude the columns which contains all gaps in ref_part
-            n_aln+=aln_col_with_id
-    n_aln=n_aln[:,1:]
-
-    # Step 2. Get the info stored in pdb file & pops results
-
-    ## Acquire the chain_obj:
+    # Get the structural_object of the chain
     parser=Bio.PDB.PDBParser()
-    structure=parser.get_structure(iden_code,f"{c_pdb_dir}/{iden_code}_C.pdb")
-    chainid=iden_code.split("_")[1][chainTypeNum]
-    chain_obj=structure[0][chainid]
+    structure=parser.get_structure(iden_code,f"{pdb_dir}/{iden_code}_C.pdb")
+    chain_obj=structure[0][chain]
 
-    ## Read the pops result (already filtered by the d_SASA cut-off)
+    coor_seq_info=[res for res in chain_obj if res.resname !="X" and res.id[0]==' ']
+    #return coor_seq_info
+    coor_seq=seq1(''.join(residue.resname for residue in coor_seq_info))
+
+    # 1. Perform the pairwise alignment
+    matrix = matlist.blosum62
+    pair_aln=pairwise2.align.globalds(num_seq_frag, coor_seq, matrix,-10,-0.5,penalize_end_gaps=False)[0]
+    # use blosum62 as the matrix, gap penalties follow the default value of EMBOSS needle
+    # just take the first one as the aln result
+    #return pair_aln
+    alned_num_seq=pair_aln.seqA
+    alned_coor_seq=pair_aln.seqB
+
+    # Read POPS File
     pops=read_pops_file(iden_code,pops_dir)[chainTypeNum]
 
-    # Step 3. Collect the information & generate the result dict
-    ## dict format: {aln_pos_in_pairwise_profile_aln:[res_obj,if_interface_residue]}
+    # 2. Convert IMGT_num_pos into pure_pos of coor_seq
+    # IMGT_num --> pure_pos (imgt_seq) -->aln_pos (imgt_seq)=aln_pos(coor_seq) -->pure_pos (coor_seq)
     result={}
-    vcab_aln_seq=str(n_aln[0].seq)
-    pure_pos_counter=0
-    for k in range(len(vcab_aln_seq)):
-        vcab_aln_char=vcab_aln_seq[k]
-        if vcab_aln_char != "-":
-            res_obj=list(chain_obj)[pure_pos_counter]
-            pure_pos_counter+=1
-            if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
-            result[k]=[res_obj,if_interface_res]
-        else:
-            # at the gap position
-            result[k]=[np.nan,np.nan]
+    #test=[]
+    for i in num_scheme:
+        result[i]=[np.nan,np.nan]
 
-    # Step 4. Make the dimension of the full_ig (H chain) the same as fab
-    struc_cov=df.loc[df["iden_code"]==iden_code,'Structural Coverage'].item()
-    if chainType.lower()=="h" and struc_cov=='full antibody':
-        h_info=df.loc[df["iden_code"]==iden_code,"Htype"].item()
-        h_type=h_info.split('(')[0]
-        h_type_dict={'IgA1':'IGHA1',
-                     'IgA2':'IGHA2',
-                     'IgD':'IGHD',
-                     'IgG1':'IGHG1',
-                     'IgG2':'IGHG2',
-                     'IgG3':'IGHG3',
-                     'IgG4':'IGHG4',
-                     'IgM':'IGHM'}
-        result=convert_all_domain_profile_to_CH1_profile (result,f"{ref_profile_dir}/unique_alleles_aln_profile",f"{ref_profile_dir}/unique_alleles_CH1_aln_profile",h_type_dict[h_type])
+        if i in existed_numbering:
+            # pure_pos:
+            num_seq_pure_pos=pure_num_info[i][0]
 
+
+            # aln_positions:
+            num_seq_aln_pos=map_pure_seq_pos_to_aln_pos(num_seq_pure_pos,alned_num_seq)
+
+            coor_seq_aln_pos=num_seq_aln_pos
+            #test.append(coor_seq_aln_pos)
+            #if coor_seq_aln_pos!=None: #and alned_coor_seq[coor_seq_aln_pos]=="-":
+                #print (alned_num_seq[num_seq_aln_pos])
+                #print (i,pure_num_info[i][1],num_seq_aln_pos,coor_seq_aln_pos,alned_coor_seq[coor_seq_aln_pos])
+
+            if coor_seq_aln_pos==None or alned_coor_seq[coor_seq_aln_pos]=="-":
+                # if the residue in the alned position of coor_seq is gap
+                # this means this residue is missing in the coordinate sequence
+                result[i]=[np.nan,np.nan]
+
+            else:
+                # pure_position:
+                coor_seq_pure_pos=map_aln_pos_to_pure_seq_pos(coor_seq_aln_pos,alned_coor_seq)
+
+                res_obj=coor_seq_info[coor_seq_pure_pos]
+                if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
+                result[i]=[res_obj,if_interface_res]
     return result
+    #return test
 
-# Part 4. Calculate the distance matrix
-def generate_distance_matrix(iden_code,ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,df):
-    h_res_info=map_profile_aln_to_residue_info (iden_code,"h",ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,df)
-    l_res_info=map_profile_aln_to_residue_info (iden_code,"l",ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,df)
+# 4. Generate the distance matrix
+def generate_distance_matrix (iden_code,pdb_dir,pops_dir,hcnum,lcnum):
 
-    result = np.zeros((len(h_res_info), len(l_res_info)), np.float)
-    for row, h_res in h_res_info.items() :
-        for col, l_res in l_res_info.items() :
+    h_res_info=map_imgt_numbering_to_residue_info(iden_code,"h",hcnum,pdb_dir,pops_dir)
+    l_res_info=map_imgt_numbering_to_residue_info(iden_code,"l",lcnum,pdb_dir,pops_dir)
+
+    result = np.zeros((len(h_res_info), len(l_res_info)), float)
+    for row, h_res in enumerate(h_res_info.values()) :
+        for col, l_res in enumerate(l_res_info.values()) :
             hres_obj,h_res_if_interface=h_res
             lres_obj,l_res_if_interface=l_res
             if (h_res_if_interface==1) and (l_res_if_interface==1):
@@ -230,7 +294,7 @@ def generate_distance_matrix(iden_code,ref_profile_dir,aln_out_dir,c_pdb_dir,pop
 
     return result
 
-# Part 5. Calculate interface distance index and collect the values into a matrix
+# 5. Calculate interface distance index and collect the values into a matrix
 def exclude_mtrx_not_calculated(o_df,fn):
     # fn: the file name of the file containing the iden_code with not calculated matrix(format: comma separated string) would be generated
     f=open(fn,"r")
@@ -247,20 +311,21 @@ def cal_distance_between_matrix (ab1,ab2,mtrx_dir):
         return np.nan
     m1=np.loadtxt(f"{mtrx_dir}/{ab1}_interface_dist_mtrx.txt",dtype=float)
     m2=np.loadtxt(f"{mtrx_dir}/{ab2}_interface_dist_mtrx.txt",dtype=float)
-    if m1.shape==m2.shape:
-        item_diff=m1-m2
-        item_diff_square=item_diff*item_diff
-        item_diff_square_sum=item_diff_square.sum()
-        dist=math.sqrt(item_diff_square_sum)
-        return dist
-    else:
-        raise ValueError("Arrays must have the same size")
+    assert m1.shape==m2.shape,"Arrays must have the same size"
+
+    item_diff=m1-m2
+    item_diff_square=item_diff*item_diff
+    item_diff_square_sum=item_diff_square.sum()
+    dist=math.sqrt(item_diff_square_sum)
+    return dist
 
 def generate_dm_of_interface_dm(df,mtrx_dir):
-    result = np.zeros((len(df), len(df)), np.float)
+
+    result = np.zeros((len(df), len(df)), float)
     for r_counter,row in enumerate(df.index):
         ab1=df.loc[row,"iden_code"]
         for col in list(df.index)[r_counter+1:]:
+            # So that it will only calculate half of the dm matrix, because the matrix is symmetrical
             ab2=df.loc[col,"iden_code"]
             result[row,col]=cal_distance_between_matrix (ab1,ab2,mtrx_dir)
     labels={i:list(df.loc[i,["iden_code","Htype","Ltype"]].values) for i in df.index}
@@ -268,7 +333,7 @@ def generate_dm_of_interface_dm(df,mtrx_dir):
 
 def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
     # df: vcab, old_mtrx_df_fn: the csv file name of old dm_of_dm
-    result = np.zeros((len(df), len(df)), np.float)
+    result = np.zeros((len(df), len(df)), float)
     old_mtrx_df=pd.read_csv(old_mtrx_df_fn).drop(columns=["Unnamed: 0"])
 
     old_mtrx=old_mtrx_df.to_numpy()
@@ -294,28 +359,39 @@ def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
     labels={i:[new_abs_ordered[i]]+list(df.loc[df["iden_code"]==new_abs_ordered[i],["Htype","Ltype"]].values[0]) for i in range(len(new_abs_ordered))}
     return result,labels
 
+
+
 ######### APPLY THE FUNCTIONS ##############
-vcab=pd.read_csv("./final_vcab.csv")
-ref_profile_dir="../ch1_cl_interface_matrix/ref_profile/"
-aln_out_dir="../ch1_cl_interface_matrix/aln_results/"
-c_pdb_dir="../pdb_struc/c_pdb/"
+vcab=pd.read_csv("./final_vcab.csv").drop(columns=["Unnamed: 0"])
+hcnum=pd.read_csv("./num_result/cnumbering_H_C1.csv")
+lcnum=pd.read_csv("./num_result/cnumbering_KL_C.csv")
+
+
+pdb_dir="../pdb_struc/c_pdb/"
 pops_dir="../pops/result"
 
 mtrx_out_dir="../ch1_cl_interface_matrix/matrix_results/"
-os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
+#os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
 
+print ("Calculating interface matrix")
 int_mtrx_not_calculated=[]
 for i in vcab.index:
     iden_code=vcab.loc[i,"iden_code"]
+    if os.path.exists(f"{mtrx_out_dir}/{iden_code}_interface_dist_mtrx.txt"):
+        # skip the precalcuated interface matrix
+        continue
+
     try:
-        interface_mtrx=generate_distance_matrix(iden_code,ref_profile_dir,aln_out_dir,c_pdb_dir,pops_dir,vcab)
+        interface_mtrx=generate_distance_matrix(iden_code,pdb_dir,pops_dir,hcnum,lcnum)
         np.savetxt(f"{mtrx_out_dir}/{iden_code}_interface_dist_mtrx.txt",interface_mtrx,fmt='%10.5f')
     except:
+        print (iden_code)
         int_mtrx_not_calculated.append(iden_code)
 
 with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
     f.write(",".join(int_mtrx_not_calculated))
 
+print ("Calculating distance matrix of interface matrices")
 # Calculate the distance matrix of dm (matrix of the interface distance index)
 flt_vcab=exclude_mtrx_not_calculated(vcab,"../ch1_cl_interface_matrix/mtrx_not_calculated.txt")
 # exclude the VCAb entries with no interface matrix (mainly because the POPSComp result is not available for the solution scattering method)
@@ -327,6 +403,8 @@ if os.path.exists("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"):
 else:
     dm,ab_info_label=generate_dm_of_interface_dm(vcab,mtrx_out_dir)
 np.savetxt(f"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.txt",dm,fmt='%10.5f')
+
+print ("Storing matrix into csv")
 with open('../ch1_cl_interface_matrix/dm_of_dm_label.json', 'w') as fp:
     json.dump(ab_info_label, fp)
 
