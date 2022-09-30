@@ -26,7 +26,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 0. Get the paired antibody chains
-#os.system("python get_paired_seq.py")
+os.system("python get_paired_seq.py")
 
 hvnum=pd.read_csv("./num_result/vnumbering_H.csv")
 lvnum=pd.read_csv("./num_result/vnumbering_KL.csv")
