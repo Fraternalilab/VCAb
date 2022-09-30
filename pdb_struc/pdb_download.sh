@@ -74,13 +74,14 @@ IFS=',' read -ra tokens <<< "$contents"
 
 for token in "${tokens[@]}"
 do
-  if [ -f $outdir"/"$token".pdb" ]
+  if [ -f $outdir"/"$token".pdb" ] || [ -f $outdir"/"$token".cif" ]
   then
     continue
   fi
   if [ "$cif" == true ]
   then
     download ${token}.cif.gz $outdir
+    gunzip $outdir/${token}.cif.gz
   fi
   if [ "$pdb" == true ]
   then
