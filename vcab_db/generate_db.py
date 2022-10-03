@@ -1757,5 +1757,17 @@ if __name__=="__main__":
     vcab=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
     vcab.to_csv("./vcab.csv")
 
+    print ("generating VCAb seq db for shiny app")
+    convert_seq_from_df_to_fasta(vcab,'H_seq',"../seq_db/vcab_db")
+    convert_seq_from_df_to_fasta(vcab,'H_coordinate_seq',"../seq_db/vcab_db")
+
+    convert_seq_from_df_to_fasta(vcab,'L_seq',"../seq_db/vcab_db")
+    convert_seq_from_df_to_fasta(vcab,'L_coordinate_seq',"../seq_db/vcab_db")
+
+    convert_seq_from_df_to_fasta (vcab,'HV_seq',"../seq_db/vcab_db")
+    convert_seq_from_df_to_fasta (vcab,'LV_seq',"../seq_db/vcab_db")
+
+    os.system ("sh mk_vcab_bl_db.sh")
+
     os.system("python cal_angles_new.py")
     os.system("python cal_interface_matrix_new.py")
