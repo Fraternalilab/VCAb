@@ -6,6 +6,7 @@ library (NGLVieweR)
 library (tibble)
 library (shinyhelper)
 library (ggplot2)
+library(seqinr)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/final_vcab.csv"
@@ -16,48 +17,65 @@ pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
 # Directories of blast db:
 # ref db:
-igh_bl <- "../seq_db/ref_db/human_IGH_db/human_IGH.fasta"
+igh_bl <- "../seq_db/ref_db/ch_db/all_species_unique_CH_alleles.fasta"
 # ref_IGH_seq from uniprot
-light_bl <- "../seq_db/ref_db/human_light_chain_db/human_light_constant.fasta"
+light_bl <- "../seq_db/ref_db/cl_db/all_species_unique_CL_alleles.fasta"
 # ref_L_seq from uniprot
-all_ref_bl <- "../seq_db/ref_db/all_ref_db/all_ref.fasta"
+all_ref_bl <- "../seq_db/ref_db/ch+cl_db/total_species_c_ref.fasta"
 # ref_db containing all the reference sequences
 
-# Blast db:
-VCAb_fseq_bl <- "../seq_db/vcab_db/all_full_seq.fasta"
+# VCAb db:
+VCAb_fseq_bl <- "../seq_db/vcab_db/full_seq_db/all_full_seq.fasta"
 # all the full sequence from both H and L chains
-VCAb_vseq_bl <- "../seq_db/vcab_db/all_v_seq.fasta"
+VCAb_vseq_bl <- "../seq_db/vcab_db/v_seq_db/all_v_seq.fasta"
 # all the V region sequence from both H and L chains
 
-VCAbH_bl <- "../seq_db/vcab_db/H_seq.fasta"
+VCAbH_bl <- "../seq_db/vcab_db/h_seq_db/H_seq.fasta"
 # all H_full_seq in VCAb
-VCAbL_bl <- "../seq_db/vcab_db/L_seq.fasta" 
+VCAbL_bl <- "../seq_db/vcab_db/l_seq_db/L_seq.fasta" 
 # all L_full_seq in VCAb
-HV_bl <- "../seq_db/vcab_db/HV_seq.fasta"
+HV_bl <- "../seq_db/vcab_db/hv_seq_db/HV_seq.fasta"
 # all HV seq in VCAb
-LV_bl <- "../seq_db/vcab_db/LV_seq.fasta"
+LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 # all LV seq in VCAb
 # Example: generate files required for the establishment of blast db:
 # makeblastdb("~/Desktop/antibody/human_IGH_db/human_IGH.fasta",dbtype="prot")
+# on command line:
+# makeblastdb -in test.fasta -dbtype prot
+
+# Files required to display the numbering function
+vh_num_dir="../vcab_db/num_result/vnumbering_H.csv"
+vl_num_dir="../vcab_db/num_result/vnumbering_KL.csv"
+ch_num_dir="../vcab_db/num_result/new_cnumbering_H_C1.csv"
+cl_num_dir="../vcab_db/num_result/new_cnumbering_KL_C.csv"
+
+vh_num=read.csv(vh_num_dir)
+vl_num=read.csv(vl_num_dir)
+ch_num=read.csv(ch_num_dir)
+cl_num=read.csv(cl_num_dir)
 
 # Files required to plot the seq_cov plot
-dom_info_dir="../seq_db/ref_db/all_alleles/H_chains/h_alleles_domain_info.csv"
-total_dom_info=read.csv(dom_info_dir)
-total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
+dom_info_dir="../vcab_db/h_domains_info.csv" 
+total_dom_info=read.csv(file=dom_info_dir) 
+# NOTE: unlike the previous version, total_dom_info is a list now. CHANGES SHOULD BE MADED RELATED TO THIS VARIABLE.
+#total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
 
-h_author_seq_bl_dir="../vcab_db/blast_result/best_h_seq_bl_result.csv"
+h_author_seq_bl_dir="../vcab_db/blast_result/best_h_seq_bl_result.csv" 
 h_coor_seq_bl_dir="../vcab_db/blast_result/best_h_coordinate_seq_bl_result.csv"
 t_h_author_bl=read.csv(h_author_seq_bl_dir)
 t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
 # Files required to rank the antibody according to interface similarity:
 ## dm stands for distance matrix: the matrix holding the interface difference index value
-dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
-dm_df=read.csv(dm_dir)
+#dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
+#dm_df=read.csv(dm_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
 
+# Read the unusual case csv
+#all_unusual_cases = read.csv(file = '../vcab_db/unusual_cases/all_unusual_cases.csv')
+#all_unusual_cases = all_unusual_cases[, 3:ncol(all_unusual_cases)]
 
 # Round some values to two digit in order to make the table looks better:
 vcab=o_vcab
@@ -69,8 +87,10 @@ vcab=vcab[,!(names(vcab) %in% c("X","CH1.CL_interface_angle","elbow_angle0"))]
 #Note: the positions of seqs:33:36
 ##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 update_date_fn="../vcab_db/VCAb_db_update_date.txt"
-update_date=readChar(fileName, file.info(fileName)$size)
+update_date=readChar(update_date_fn, file.info(update_date_fn)$size)
 
+release_fn="../vcab_db/release.txt"
+release=readChar(release_fn, file.info(release_fn)$size)
 
 ####################### Functions #######################
 # Generate blast table: return the best blast result (order: highest iden, alignment_length)
@@ -261,7 +281,7 @@ extract_entry <- function(title,df){
 }
 
 # Filter the table by features (attributes)
-filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_antigen,df=vcab){
+filter_the_rows <- function (species,iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_antigen,df=vcab){
   # select the rows to be displayed
   # return a set of TRUE/FALSE value
   
@@ -278,7 +298,7 @@ filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_a
   antigen_filter <- function(){
     if (if_antigen=="Any") TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
   }
-  first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
+  first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Species",species)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
   final_filter <- if (is.na(res_cut)) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
   
   return (final_filter)
@@ -349,7 +369,8 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   # horltype should be only "Htype" or "Ltype"
   ctype=df[df$iden_code==iden_code,horltype]
   allele_info=strsplit(ctype,"\\(")[[1]][2]
-  allele=strsplit(allele_info,",")[[1]][1]
+  if(grepl(",", allele_info)) allele=strsplit(allele_info,",")[[1]][1]
+  else allele=strsplit(allele_info,":")[[1]][1]
   
   # (1) annotation of domain starts/end points of the reference allele
   dom_positions = ref_dom[ref_dom$q==allele,]
@@ -457,6 +478,244 @@ get_similar_interface <- function(iden_code,dm_df){
   return (similar_interface_df)
 }
 
+## Functions to display antibody numbering
+
+extracting_num_df <- function(id_code,total_num_df){
+  # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
+  
+  num_df <- total_num_df[total_num_df["Id"]==id_code,14:ncol(total_num_df)]
+  colnames(num_df)<-sub("X","",colnames(num_df))
+  
+  # Filter out columns with the value "deleted" 
+  num_df <-num_df[,unlist(lapply(num_df,function(x){!("deleted" %in% x)}))]
+  rownames(num_df) <- "residues"
+  num_df["numbering",] <- colnames(num_df)
+  
+  number <- as.numeric(regmatches(colnames(num_df), gregexpr("[[:digit:]]+", colnames(num_df))))
+  insertion_code <- regmatches(colnames(num_df), gregexpr("[[:alpha:]]+", colnames(num_df)))
+  num_df["number",]<- number
+  num_df["insertion",] <- num_df["insertion",] <- lapply(insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x)
+  colnames(num_df) <- NULL
+  return (num_df)
+}
+
+generating_vc_num_info <- function(id_code,tvnum,tcnum){
+  # Generating the dataframe containing both V and C region
+  # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
+  
+  vnum <- extracting_num_df(id_code,tvnum)
+  vnum["VC",]<-rep(c("V"),ncol(vnum))
+  cnum <- extracting_num_df(id_code,tcnum)
+  cnum["VC",]<-rep(c("C"),ncol(cnum))
+  
+  vnum <- t(vnum)
+  cnum <- t(cnum)
+  vcnum <- rbind(vnum,cnum)
+  vcnum <- as.data.frame(vcnum)
+  
+  vcnum["region"]<-NA
+  
+  # Assign regions column (FR1,CDR,A-strand,etc)
+  for (i in 1:nrow(vcnum)){
+    vc <- vcnum[i,"VC"]
+    num <- as.numeric(vcnum[i,"number"])
+    ins <- vcnum[i,"insertion"]
+    if (vc=="V"){
+      if (num<=26){
+        vcnum[i,"region"] <- "FR1"
+      }
+      else if (num>=27 && num<=38){
+        vcnum[i,"region"] <- "CDR1"
+      }
+      else if (num>=39 && num<=55){
+        vcnum[i,"region"] <- "FR2"
+      }
+      else if (num>=56 && num<=65){
+        vcnum[i,"region"] <- "CDR2"
+      }
+      else if (num>=66 && num<=104){
+        vcnum[i,"region"] <- "FR3"
+      }
+      else if (num>=105 && num<=117){
+        vcnum[i,"region"] <- "CDR3"
+      }
+      else{
+        vcnum[i,"region"] <- "FR4"
+      }
+    }
+    else{
+      if (num==1){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand A"
+        }
+        else{
+          vcnum[i,"region"] <- ""
+        }
+        
+      }
+      else if (num<15 && num >1){
+        vcnum[i,"region"] <- "strand A"
+      }
+      else if(num==15){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand A"
+        }
+        else{
+          vcnum[i,"region"] <- "AB turn"
+        }
+      }
+      else if(num>=16 && num<=26){
+        vcnum[i,"region"] <- "strand B"
+      }
+      else if(num>=27 && num<=38){
+        vcnum[i,"region"] <- "BC turn"
+      }
+      else if(num>=39 && num<45){
+        vcnum[i,"region"] <- "strand C"
+      }
+      else if(num==45){
+        if(is.na(ins)){
+          vcnum[i,"region"] <- "strand C"
+        }
+        else{
+          vcnum[i,"region"] <- "CD turn"
+        }
+      }
+      else if(num>=77 && num<84){
+        vcnum[i,"region"] <- "strand D"
+      }
+      else if(num==84){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand D"
+        }
+        else{
+          vcnum[i,"region"] <- "DE turn"
+        }
+      }
+      else if(num==85){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand E"
+        }
+        else{
+          vcnum[i,"region"] <- "DE turn"
+        }
+      }
+      else if(num>85&&num<96){
+        vcnum[i,"region"] <- "strand E"
+      }
+      else if(num==96){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand E"
+        }
+        else{
+          vcnum[i,"region"] <- "EF turn"
+        }
+      }
+      else if (num>=97&&num<=104){
+        vcnum[i,"region"] <- "strand F"
+      }
+      else if (num>=105&&num<=117){
+        vcnum[i,"region"] <- "FG loop"
+      }
+      else{
+        vcnum[i,"region"] <- "strand G"
+      }
+    }
+  }
+  
+  ## Assign x, y positions
+  assign_x_and_y <- function(regions,y_value){
+    s_num <- list()
+    for (r in regions){
+      ss_num <- vcnum[vcnum["region"]==r,]
+      if (nrow(ss_num)>=1){
+        rownames(ss_num) <- NULL
+        vc <- ss_num[1,"VC"]
+        ss_num[nrow(ss_num) + 1,] = c(NA_character_,NA_character_,NA_character_,NA_character_,vc,r)
+      }
+      s_num <- append(s_num,list(ss_num))
+    }
+    #s_num <- vcnum[(unlist(lapply(vcnum["region"],function(x){x %in% regions}))),]
+    s_num <- do.call("rbind",s_num)
+    rownames(s_num) <- NULL
+    s_num["x"] <- as.numeric(rownames(s_num))
+    s_num["y"] <- rep(y_value,nrow(s_num))
+    return (s_num)
+  }
+  vnum1 <- assign_x_and_y(c("FR1","CDR1"),9)
+  vnum2 <- assign_x_and_y(c("FR2","CDR2"),8)
+  vnum3 <- assign_x_and_y(c("FR3"),7)
+  vnum4 <- assign_x_and_y(c("CDR3","FR4"),6)
+  cnum1 <- assign_x_and_y(c("","strand A","AB turn","strand B","BC turn"),4)
+  cnum2 <- assign_x_and_y(c("strand C","CD turn","strand D","DE turn"),3)
+  cnum3 <- assign_x_and_y(c("strand E","EF turn","strand F","FG loop"),2)
+  cnum4 <- assign_x_and_y(c("strand G"),1)
+  result <- do.call("rbind",list(vnum1,vnum2,vnum3,vnum4,cnum1,cnum2,cnum3,cnum4))
+  return (result)
+  
+  
+}
+
+get_numbering_plot <- function(num_df){
+  
+  region_pos <- data.frame("region"=unique(num_df[,"region"]))
+  region_pos["start"] <- NA
+  region_pos["end"] <- NA
+  region_pos["y"] <- NA
+  region_pos["VC"] <- NA
+  
+  for (i in 1:nrow(region_pos)){
+    region_name=region_pos[i,"region"]
+    snum_df=num_df[num_df["region"]==region_name,]
+    rownames(snum_df) <- NULL
+    region_pos[i,"start"] <- min(snum_df[,"x"])
+    region_pos[i,"end"] <- max(snum_df[,"x"])
+    region_pos[i,"y"] <- snum_df[1,"y"]
+    region_pos[i,"VC"] <- snum_df[1,"VC"]
+  }
+  #region_pos$y <- factor(region_pos$y,
+  #                       levels=c(1,2,3,4,5,6,7,8,9))
+  
+  
+  g <- ggplot(num_df, aes_string(x="x", y = "y")) + 
+    scale_y_discrete(drop = FALSE, name = "C                                      V") +
+    scale_x_discrete(drop = FALSE, name = "") +
+    theme_bw()+
+    theme(
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank(),
+      axis.title.y = element_text(color = "black", size = 18, angle = 90, hjust = .5, vjust = .5, face = "bold"),
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+    ) +
+    # Add region labels
+    geom_text(data=region_pos,aes(label=region),x=(region_pos[,"start"]+region_pos[,"end"])/2,vjust=-1.5,fontface='bold',size=5)+
+    geom_tile(data=num_df[!is.na(num_df$residues), ],aes_string(x="x",y="y",fill="VC"), alpha=0.5,height = 0.5)+ # add background
+    scale_fill_manual(values=c("V"=alpha("deepskyblue3", .5),"C"=alpha("darkorange", .5)),guide = "none")+
+    geom_text(data=num_df,aes_string(x="x",y="y",label="residues"),hjust=0,nudge_x=-0.5) # add sequence residues
+    
+  return (g)
+  
+}
+
+extract_seq_from_num_df <- function(df,Id_code){
+  df <- df[,c("VC","region","residues","numbering")]
+  df <- df[complete.cases(df),]
+  
+  vnum <- df[df["VC"]=="V",]
+  cnum <- df[df["VC"]=="C",]
+  
+  vseq <- paste0(vnum$residues,collapse="")
+  cseq <- paste0(cnum$residues,collapse="")
+  
+  v_title <- paste0(Id_code,"_v_seq")
+  c_title <- paste0(Id_code,"_c_seq")
+  
+  return (list(titles=c(v_title,c_title),seqs=list(vseq,cseq),num_df=df))
+  
+}
+
 
 ####################### UI #######################
 ui <- fluidPage(
@@ -479,12 +738,15 @@ ui <- fluidPage(
                                                       
                                              ),
                                              tabPanel("Features",
-                                                      selectInput("iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
+                                                      selectInput("species","Species:",choices=c("All",unique(vcab$Species)))%>%
+                                                        helper(type="inline",title="Species",
+                                                               content=c("Species annotation for the antibody.")),
+                                                      selectInput("iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
                                                         helper(type="inline",title="Isotype", 
-                                                               content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                                               content=c("Isotypes are classified by the sequence of C region on H chain.",
                                                                          "Each isotype has different function.")),
                                                       
-                                                      selectInput("Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
+                                                      selectInput("Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
                                                         helper(type="inline",title="Light chain type", 
                                                                content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
                                                       selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
@@ -571,7 +833,7 @@ ui <- fluidPage(
                                                                            "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
                                              ),
                                              tabPanel("CH1-CL Interface",
-                                                      tags$em("Get the antibodies with similar CH1-CL interface pattern"),
+                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
                                                       br(),br(),
                                                       selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
                                                                      options=list(maxOptions =5,
@@ -580,9 +842,9 @@ ui <- fluidPage(
                                                         #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
                                                         helper(type="inline",title="iden_code", 
                                                                content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
-                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.",
-                                                                         "The interface similarity is ranked by interface difference index. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.",
-                                                                         "NOTE: Now the interface similarity search function only support antibodies within VCAb."
+                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
+                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
+                                                                         "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
                                                                ))
                                                       #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
                                                       
@@ -598,11 +860,18 @@ ui <- fluidPage(
                                  tabsetPanel(
                                    tabPanel("Structural Viewer",
                                             # show the structure viewer
-                                            textOutput("struc_selected_message"),
+                                            textOutput("struc_selected_message") %>%
+                                              helper(type="inline",title="Structure viewer",
+                                                     content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
+                                                               "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
+                                                               "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
+                                                               "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
+                                                               "(items indicated in quotation marks will be changed as the mouse moves.)"
+                                                     )),
                                             NGLVieweROutput("structure"),
                                             div(img(
                                               src="./struc_viewer_legend.png",
-                                              width = 680#, height = 80
+                                              width = 560#, height = 80
                                             )),
                                             checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
                                             conditionalPanel(
@@ -616,12 +885,23 @@ ui <- fluidPage(
                                               
                                               #)
                                             ),
-                                            downloadButton("download_struc",label="Download the displayed structure")#,
+                                            downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
                                             
                                    ),
                                    tabPanel("Sequence Coverage",
                                             plotOutput("seq_cov_plot")
-                                   )
+                                   ),
+                                   tabPanel("Sequence numbering",
+                                            radioButtons(inputId="num_chain_tabs", label="Choose the sequence to display:", 
+                                                         choices=c("Heavy chain sequence" = "Heavy",
+                                                                   "Light chain sequence" = "Light"
+                                                                   )),
+                                            plotOutput("numbering_plot",width="580px",height="450px",
+                                                       hover=hoverOpts("numbering_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
+                                            uiOutput("hover_info"),
+                                            downloadButton("download_num_seq",label="Download displayed numbered sequence")
+                                            
+                                            )
                                  )
                                  
                                  
@@ -643,11 +923,11 @@ ui <- fluidPage(
                                                     "Multiple columns can be selected at the same time")),
                                  fluidRow(
                                    column(4,
-                                          downloadButton("download_subset",label="Download the searching result")
+                                          downloadButton("download_subset",label="Download search results")
                                    ),
                                    column(8,
-                                          checkboxInput(inputId = "if_download_pdb",label="Select this to enable the download of pdb files")%>%
-                                            helper(type="inline",title="Download searching results",
+                                          checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
+                                            helper(type="inline",title="Download search results",
                                                    content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
                                                              "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
                                                              "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
@@ -666,14 +946,17 @@ ui <- fluidPage(
                                    column(5,
                                           strong ("Filter the results by features:"),
                                           br(),br(),
-                                          selectInput("flt_iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
+                                          selectInput("flt_species","Species:",choices=unique(vcab$Species)) %>%
+                                            helper(type="inline",title="Species",
+                                                   content=c("Species annotation for the antibody")),
+                                          selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
                                             helper(type="inline",title="Isotype", 
-                                                   content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                                   content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
                                                              "Each isotype has different function.")),
                                           
-                                          selectInput("flt_Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
+                                          selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
                                             helper(type="inline",title="Light chain type", 
-                                                   content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                                                   content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
                                           selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
                                             helper(type="inline", title="Structural Coverage",
                                                    content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
@@ -712,8 +995,11 @@ ui <- fluidPage(
                                  tabsetPanel(id="residue_list_panel",
                                              tabPanel("CH1-CL interface residues",
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
-                                                      textOutput("pops_message"),
-                                                      
+                                                      textOutput("pops_message") %>%
+                                                        helper(type="inline",title="CH1-CL interface residues",
+                                                               content=c("Interface analysis was performed using POPSComp (Cavallo, Kleinjung and Fraternali NAR (2003), doi: 10.1093/nar/gkg601. (github: https://github.com/Fraternalilab/POPScomp).","",
+                                                                         "Amino acid numbering follows the numbering scheme in the displayed/analysed .pdb file."
+                                                               )),
                                                       br(),
                                                       
                                                       actionButton("clear_sele_res","Clear selected residues"),
@@ -758,9 +1044,27 @@ ui <- fluidPage(
              tabPanel("Download",
                       ## Allow the user to download the entire database
                       downloadButton("download",label="Download all entries in VCAb"),
+                      br(),
+                      downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
                       br(),br(),br(),br(),br(),br()
                       
-             )
+             ),
+             tabPanel("About",
+                      h5(paste0("Version: ", release)),
+                      br(),
+                      h5("Documentation can be found in the following link:"),
+                      tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
+                      h5(),
+                      h5("If you have used VCAb in your work, please cite: "),
+                      br(),
+                      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
+                      br(),
+                      div(img(src="./Fig2_VCAb_db.png",
+                              width = 1080#, height = 80
+                      )),
+                      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
+                      br()
+             )	     
   )
   
 )
@@ -800,7 +1104,7 @@ server <- function(input,output,session){
     else if (tabs_value() == "Features"){
       #o_df <- vcab[select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method),]
       #o_df <- if (is.na(res_cut)) o_df else o_df[o_df$resolution <= res_cut,] # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
-      o_df <- vcab[filter_the_rows(input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut,input$if_antigen),]
+      o_df <- vcab[filter_the_rows(input$species,input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut,input$if_antigen),]
       rownames(o_df) <- NULL # reset the index
       
       final_df <- addShow(o_df,ns)
@@ -824,11 +1128,12 @@ server <- function(input,output,session){
           }
           else{
             type_title <- bl_result[1,1]
-            type <- tail(strsplit(type_title,"\\|")[[1]],n=1)
+            #type <- tail(strsplit(type_title,"\\|")[[1]],n=1)
+            type <- type_title
             
             if(seq_type=="unknown_seq"){
-              Hnames <- c("IGHG1_HUMAN","IGHG2_HUMAN","IGHG3_HUMAN","IGHG4_HUMAN","IGHM_HUMAN","IGHA1_HUMAN","IGHA2_HUMAN","IGHD_HUMAN","IGHE_HUMAN")
-              if (type %in% Hnames){
+              
+              if (substr(type,1,3) == "IGH"){
                 return ("This chain is likely to be a H chain. Please select the 'Heavy chain' option under the sequence box for further identification.")
               }
               else{
@@ -910,7 +1215,13 @@ server <- function(input,output,session){
             
             ab_info$ab_info_df <- new_bl_ab_df
             #ab_info$ab_info_df <- VCAb_blast_df
-            ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
+            if (input$sele_bl_db=="v_region"){
+              ab_info$chain_type_message <- "The top ten entries in VCAb which are the most similar to the input sequence are shown below."
+            }
+            else{
+              ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
+            }
+            
             }
           
           
@@ -969,6 +1280,8 @@ server <- function(input,output,session){
         ab_info$chain_type_message <- "Please enter a valid iden_code"
       }
       else{
+        dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
+        dm_df=read.csv(dm_dir)
         interface_info <- get_similar_interface(iden_code,dm_df)
         total_table <- generate_total_info(interface_info,ns)
         ab_info$ab_info_df <- total_table
@@ -1043,17 +1356,17 @@ server <- function(input,output,session){
   
   file_col_idx <- reactive({
     if (tabs_value()=="PDB" | tabs_value()=="Features"){
-      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
     else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired")){
-      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
       #return (names(ab_info$ab_info_df))
     }
     else if (tabs_value()=="CH1-CL Interface"){
-      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
     else {
-      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
   })
   
@@ -1061,7 +1374,7 @@ server <- function(input,output,session){
   file_row_idx <- function(df){
     reactive({
       if (tabs_value()=="Sequence"){
-        return (filter_the_rows(input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
+        return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
       }
       else{
         return (TRUE)
@@ -1203,6 +1516,107 @@ server <- function(input,output,session){
     pdb_c <- struc_selected()
     get_coverage_pos_plot (pdb_c,"Htype",total_dom_info,t_h_author_bl,t_h_coor_bl,df=vcab)
   })
+  
+  ###### TABPANEL:Show antibody numbering information ######
+  num_id <- reactive({
+    iden_code <-struc_selected()
+    pdb=strsplit(iden_code,"_")[[1]][1]
+    chain_index=ifelse(input$num_chain_tabs=="Heavy",1,2)
+    chain=substr(strsplit(iden_code,"_")[[1]][2],chain_index,chain_index)
+    
+    Id=paste0(pdb,"_",chain)
+    Id
+    
+  })
+  
+  
+  
+  num_df <- reactive({
+    v_num=if (input$num_chain_tabs=="Heavy") vh_num else vl_num 
+    c_num=if (input$num_chain_tabs=="Heavy") ch_num else cl_num 
+    
+    Id=num_id()
+
+    num_df <-generating_vc_num_info(Id,v_num,c_num)
+    
+  })
+  
+  
+  output$numbering_plot<- renderPlot({
+    num_df <- num_df()
+    num_plot <-get_numbering_plot(num_df)
+    num_plot
+    
+  })
+  
+  output$hover_info <- renderUI({
+    hover <- input$numbering_hover
+    num_df <- num_df()
+    
+    plotData <- num_df[,c("x","y","VC","region","residues","numbering")]
+    plotData <- plotData[complete.cases(plotData),]
+    point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+    if (nrow(point) == 0) return(NULL)
+    
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    
+    left_pct <- ifelse(left_pct>0.7,0.7,left_pct)
+    top_pct <- ifelse(top_pct<0.4,0.4,top_pct)
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    
+    
+    
+    # create style property fot tooltip
+    # background color is set so tooltip is a bit transparent
+    # z-index is set so we are sure are tooltip will be on top
+    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
+                    "left:", left_px+1, "px; top:", top_px+1, "px;")
+    
+    
+    
+    wellPanel(
+      style = style,
+      p(HTML(paste0("<b> V/C region: ", point[["VC"]], "</b><br/>",
+                    "<b> Residue: </b>", point$residues, "<br/>",
+                    "<b> Numbering: </b>", point$numbering, "<br/>",
+                    "<b> Fragment: </b>", point$region, "<br/>")))
+    )
+  })
+  
+  output$download_num_seq<- downloadHandler(
+    filename=function(){
+      Id <- num_id()
+      paste0(Id,"_sequence_numbering_info",".zip")
+    },
+    content=function(f_name){
+      Id <- num_id()
+      num_df <- num_df()
+      
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      num_info=extract_seq_from_num_df(num_df,Id)
+      pure_num_df=num_info$num_df
+      pure_num_df_name <-paste0(Id,"_num_info.csv")
+      fasta_name <- paste0(Id,"_seq_with_gaps.fasta")
+      
+      write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
+      write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
+  )
+  
+  
+  
   
   ###### TABPANEL: Display the antibody structure ######
   # Get the directory of the pdb file:
@@ -1563,9 +1977,13 @@ server <- function(input,output,session){
       write.csv(vcab_download,file)
     }
   )
-  
-  
-  
+  #all_unusual = all_unusual_cases
+  #output$download_unusual <- downloadHandler(
+  #  filename = 'all_unusual_cases.csv', 
+  #  content = function(file){
+  #    write.csv(all_unusual, file)
+  #  }
+  #)
   
 }
 
