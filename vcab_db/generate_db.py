@@ -1,7 +1,6 @@
 # To generate the VCAb database
 # Dongjun Guo, Aug.2022
 
-#from cal_interface_matrix_new import map_pure_seq_pos_to_aln_pos,map_aln_pos_to_pure_seq_pos
 
 import pandas as pd
 import numpy as np
@@ -319,7 +318,7 @@ def find_nearby_chains (pdbid,h,l,mol_info,hvnum,lvnum,pdb_dir):
                        for chain in ns.search(query_atom.coord, 7.5, 'C')}
         remove_chains=[]
 
-        # For the antigen chain is polypeptides, check if it contains at least 50 amino acids
+        # If multiple polypeptide antigen chains is catched, keep the one with the longest fragment within 7.5 A.
         peptides=[chain for chain in nearby_chains if mol_info[chain.id][1]=="polypeptide(L)"]
         if len(peptides)>1:
             c_info={}
@@ -349,12 +348,16 @@ def get_antigen_info(pdbid,Hchains,Lchains,mol_info,pdb_dir):
                 sub_result[ag]=mol_info[ag]
             """
             If there are multiple molecule types in sub_result,
-            and one of them is polypeptide, then remove other chains from antigen chain list
+            and one of them is polypeptide, then remove other chains from antigen chain list.
+            (Same for polyribonucleotide & polydeoxyribonucleotide)
             """
             mol_types=set([i[1] for i in sub_result.values()])
 
-            if len(mol_types)!=1 and ("polypeptide(L)" in mol_types or "polyribonucleotide" in mol_types or "polydeoxyribonucleotide" in mol_types):
-                sub_result={k:v for k,v in sub_result.items() if v[1]=="polypeptide(L)"}
+            if len(mol_types)!=1:
+                for i in ["polypeptide(L)","polyribonucleotide","polydeoxyribonucleotide"]:
+                    if i in mol_types:
+                        sub_result={k:v for k,v in sub_result.items() if v[1]==i}
+
         if sub_result!={}:
             result.append(sub_result)
 
@@ -386,6 +389,8 @@ def gather_pdbeinfo_for_all(o_df,pdb_dir):
         iden_code=df.loc[i,"iden_code"]
         h=Hchains.split(";")[0]
         l=Lchains.split(";")[0]
+
+        # This section is just to try to get info from pdbe multiple times, in case the connection time exceed and everything will be lost
         try:
             pdbinfo=get_info_from_pdbe(pdb)
         except:
@@ -394,6 +399,7 @@ def gather_pdbeinfo_for_all(o_df,pdb_dir):
             except:
                 pdbinfo=get_info_from_pdbe(pdb)
                 print ("connection time exceed: can't try anymore")
+
         mol_info=pdbinfo["mol_info"]
 
         title.append(pdbinfo['title'])
@@ -1060,6 +1066,7 @@ def extract_domain_information_from_imgt_fasta(fn, ifH):
     flt_c_titles=c_titles.loc[c_titles["if_H"]==ifH]
 
     domains={}
+    result=[]
     for i in flt_c_titles.index:
         a_name=flt_c_titles.loc[i,"allele_name"]
         species=flt_c_titles.loc[i,"pure_species"].lower()
@@ -1072,21 +1079,29 @@ def extract_domain_information_from_imgt_fasta(fn, ifH):
         if allele_name not in domains.keys():
             d_counter=domain_seq_len
             domains[allele_name]={domain_name:[(1,domain_seq_len),d_counter,if_partial]}
+
+            result.append([1,domain_seq_len,allele_name,domain_name])
         else:
             last_val=list(domains[allele_name].values())[-1]
             previous_d_counter=last_val[1]
             d_counter=domain_seq_len
             domains[allele_name][domain_name]=[(1+previous_d_counter,domain_seq_len+previous_d_counter),d_counter+previous_d_counter,if_partial]
+            result.append([1+previous_d_counter,domain_seq_len+previous_d_counter,allele_name,domain_name])
+    result_df=pd.DataFrame(result,columns=["a","b","q","dom"])
+    return domains,result_df
 
-    return domains
 
 imgt_original="../seq_db/ref_db/all_species_ref_seq_imgt.fasta"
-h_domains=extract_domain_information_from_imgt_fasta(imgt_original,1)
-l_domains=extract_domain_information_from_imgt_fasta(imgt_original,0)
+h_domains,h_domains_df=extract_domain_information_from_imgt_fasta(imgt_original,1)
+l_domains,l_domains_df=extract_domain_information_from_imgt_fasta(imgt_original,0)
+
 with open("h_domains.json","w") as outfile:
     json.dump(h_domains,outfile)
 with open("l_domains.json","w") as outfile:
     json.dump(l_domains,outfile)
+
+h_domains_df.to_csv("h_domains_info.csv")
+l_domains_df.to_csv("l_domains_info.csv")
 
 def aligned_to (start,end,d_name,allele,domains=h_domains):
     # return the aligned coverage for certain domain in specific Ig
@@ -1555,7 +1570,12 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                 h_pdb_species=df.loc[i,"H_pdb_species"]
                 l_pdb_species=df.loc[i,"L_pdb_species"]
 
-
+                """
+                Sometimes for the V domains identified as "humanized" (in the format of "Humanized: human, other species"),
+                if the "other species" is alosp present in the C domains,
+                it is more likely that this antibody is not "humanized" (because C domains should be human, not other species).
+                Cases like this should be corrected.
+                """
                 if "Humanized" in x:
                     vh_other_species=[i for i in x.split(":")[1].split(";") if i != "homo_sapiens"][0]
                     if vh_other_species in c_other_species:
@@ -1565,7 +1585,7 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                         df.loc[i,"VH_allele"]=s_vh_alleles
                         df.loc[i,"Alternative_VH_allele"]=s_al_vhtype
 
-                        print (f"vh_species is changed:{iden_code}: from {x} to {vh_other_species}")
+                        #print (f"vh_species is changed:{iden_code}: from {x} to {vh_other_species}")
                         x=vh_other_species
 
 
@@ -1599,10 +1619,6 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                         a_al_s=[i.split("(")[1].split("|")[0] for i in a_al.split(";") if i !=""]
                         b_al_s=[i.split("(")[1].split("|")[0] for i in b_al.split(";") if i !=""]
 
-                        #return x_al,y_al,a_al,b_al
-                        #return (x_al_s,x,y_al_s,y,a_al_s,a,b_al_s,b)
-                        #return [x_al_s+[x],y_al_s+[y],a_al_s+[a],b_al_s+[b]]
-                        #return [set(x_al_s+[x]),set(y_al_s+[y]),set(a_al_s+[a]),set(b_al_s+[b])]
                         common_species=list(set.intersection(set(x_al_s+[x]),set(y_al_s+[y]),set(a_al_s+[a]),set(b_al_s+[b])))
                         if len(common_species)==1:
                             species.append(common_species[0].title())
@@ -1757,7 +1773,7 @@ if __name__=="__main__":
     vcab=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
     vcab.to_csv("./vcab.csv")
 
-    print ("generating VCAb seq db for shiny app")
+    print ("generating files for shiny app")
     convert_seq_from_df_to_fasta(vcab,'H_seq',"../seq_db/vcab_db")
     convert_seq_from_df_to_fasta(vcab,'H_coordinate_seq',"../seq_db/vcab_db")
 
@@ -1768,6 +1784,8 @@ if __name__=="__main__":
     convert_seq_from_df_to_fasta (vcab,'LV_seq',"../seq_db/vcab_db")
 
     os.system ("sh mk_vcab_bl_db.sh")
+
+
 
     os.system("python cal_angles_new.py")
     os.system("python cal_interface_matrix_new.py")
