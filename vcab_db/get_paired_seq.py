@@ -256,28 +256,33 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
     """
 
     result={}
-
     errors=[]
+
 
     for pdb in pdb_lst:
         numbered=vnum_dict[pdb]
+
         try:
-        #if True:
             coor_seqs,pairs=new_pairHandL(pdb, numbered,struc_dir)
+        except:
+            errors.append(pdb)
+            continue
 
-            if pairs==[]: # Only includes paired H&L seqs
-                continue
+        if pairs==[]: # Only includes paired H&L seqs
+            continue
 
-            for pair in pairs:
-                h=pair[0]
-                l=pair[1]
+        for pair in pairs:
+            h=pair[0]
+            l=pair[1]
 
+            try:
                 vh_num_seq=numbered[h][0]
                 vh_imgt_num=",".join(numbered[h][1])
                 vl_num_seq=numbered[l][0]
                 vl_imgt_num=",".join(numbered[l][1])
 
-                id_code=f"{pdb}_{h}{l}"
+                id_code=f"{pdb}_{h[0]}{l[0]}"
+
                 result[id_code]=[pdb,h,l,
                             hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item(),
                             hvc.loc[hvc["Id"]==f"{pdb}_{h}","v_gene"].item(),
@@ -295,16 +300,17 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
 
                 assert len(result[id_code])==15, f"column length is shorter:{result[id_code]}"
 
-        except:
-            """
-            the error happens because it can not return values for things like hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item()
-            This happens because one pdb have multiple H-L pairs,
-            for some chains, they are in the dataframe hvc,
-            for some chains, they are not.
-            But because they all have the same pdbid, so they are all in the pdb_lst of ab_vc_pdb.
-            These entries can simply be excluded.
-            """
-            errors.append(pdb)
+            except:
+                errors.append(f"{pdb}_{h}{l}")
+                """
+                the error happens because it can not return values for things like hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item()
+                This happens because one pdb have multiple H-L pairs,
+                for some chains, they are in the dataframe hvc,
+                for some chains, they are not.
+                But because they all have the same pdbid, so they are all in the pdb_lst of ab_vc_pdb.
+                These entries can simply be excluded.
+                """
+
 
 
     col_names=["pdb","Hchain","Lchain","vh_species_hmm","heavy_vfamily","vl_species_hmm","light_vfamily",
@@ -314,7 +320,6 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
     result_df=pd.DataFrame(result).T
     result_df.columns=col_names
     return result_df,errors
-
 
 ############################ Apply the functions ############################
 if __name__=="__main__":
