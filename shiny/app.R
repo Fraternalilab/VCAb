@@ -716,6 +716,63 @@ extract_seq_from_num_df <- function(df,Id_code){
   
 }
 
+get_res_info_in_matrix <- function(iden_code,chnumbering,clnumbering){
+  #chnumbering,clnumbering: the numbering of ch, cl residues
+  pdb=strsplit(iden_code,"_")[[1]][1]
+  hl=strsplit(iden_code,"_")[[1]][2]
+  hid=paste0(pdb,"_",substr(hl,1,1))
+  lid=paste0(pdb,"_",substr(hl,2,2))
+  
+  chnum=extracting_num_df(hid,ch_num)
+  clnum=extracting_num_df(lid,cl_num)
+  
+  hres= if(chnumbering %in% chnum["numbering",]) chnum["residues",which(as.vector(chnum["numbering",,drop = TRUE])==chnumbering)] else "-"
+  lres= if(clnumbering %in% clnum["numbering",]) clnum["residues",which(as.vector(clnum["numbering",,drop = TRUE])==clnumbering)] else "-"
+  
+  return (list("hres"=hres,"lres"=lres))
+}
+
+plot_interface_mtrix <- function(iden_code,mtrix_dir){
+  imgt_numbering=c('1H','1G','1F','1E','1D','1C','1B','1A','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15',
+                   '15A','15B','15C','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','34','35','36',
+                   '37','38','39','40','41','42','43','44','45','45A','45B','45C','45D','45E','45F','45G','77','78','79','80','81',
+                   '82','83','84','84A','84B','84C','84D','84E','84F','84G','85G','85F','85E','85D','85C','85B','85A','85','86',
+                   '87','88','89','90','91','92','93','94','95','96','96A','96B','97','98','99','100','101','102','103','104',
+                   '105','106','107','108','109','110','111','112','113','114','115','116','117','118','119','120','121','122',
+                   '123','124','125','126','127','128')
+  mtrix=scan(paste0(mtrix_dir,"/",iden_code,"_interface_dist_mtrx.txt"))
+  mtrix=matrix(mtrix,ncol=length(imgt_numbering))
+  df=as.data.frame(mtrix)
+  colnames(df)<-imgt_numbering
+  rownames(df)<-imgt_numbering
+  
+  data <- df %>% 
+    rownames_to_column("lid") %>%
+    pivot_longer(-c(lid), names_to = "hid", values_to = "value")
+  
+  
+  data=as.data.frame(data)
+  data$hid <- factor(data$hid,levels=imgt_numbering,ordered=TRUE)
+  data$lid <- factor(data$lid,levels=imgt_numbering,ordered=TRUE)
+  #return (data)
+  
+  ggplot(data,aes_string("hid","lid",fill="value"))+
+    geom_tile()+
+    scale_fill_gradient(low="white", high="darkorange2", name = "distance\nbetween\nC-alpha's (A)")+
+    labs(x="CH1 numbeirng",y="CL numbering")+
+    theme(
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank(),
+      axis.title.y = element_text(color = "black", size = 16, angle = 90, hjust = .5, vjust = .5, face = "bold"),
+      axis.title.x = element_text(color = "black", size = 16, angle = 0, hjust = .5, vjust = .5, face = "bold"),
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+    )
+  
+  
+}
+
 
 ####################### UI #######################
 ui <- fluidPage(
@@ -901,6 +958,12 @@ ui <- fluidPage(
                                             uiOutput("hover_info"),
                                             downloadButton("download_num_seq",label="Download displayed numbered sequence")
                                             
+                                            ),
+                                   tabPanel("CH1-CL interface matrix",
+                                            plotOutput("int_matrix_plot",width="580px",height="450px",
+                                                       hover=hoverOpts("matrix_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
+                                            uiOutput("matrix_hover_info"),
+                                            downloadButton("download_matrix",label="Download interface matrix")
                                             )
                                  )
                                  
@@ -1515,6 +1578,58 @@ server <- function(input,output,session){
   output$seq_cov_plot<- renderPlot({
     pdb_c <- struc_selected()
     get_coverage_pos_plot (pdb_c,"Htype",total_dom_info,t_h_author_bl,t_h_coor_bl,df=vcab)
+  })
+  
+  ###### TABPANEL: show the interface matrix ######
+  
+  int_matrix_plot0<- reactive({
+    iden_code <- struc_selected()
+    plot_interface_mtrix(iden_code,mtrix_dir)
+  })
+  
+  output$int_matrix_plot<- renderPlot({
+    int_matrix_plot0()
+  })
+  
+  # set the interactive "box" on the plot
+  output$matrix_hover_info <- renderUI({
+    hover <- input$matrix_hover
+    plotData <- int_matrix_plot0()$data
+    point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
+    if (nrow(point) == 0) return(NULL)
+    if (point$value == 0) return(NULL)
+    iden_code<- struc_selected()
+    interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid))
+    ch_res=interface_residues$hres
+    cl_res=interface_residues$lres
+    
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    
+    # create style property fot tooltip
+    # background color is set so tooltip is a bit transparent
+    # z-index is set so we are sure are tooltip will be on top
+    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
+                    "left:", left_px+1, "px; top:", top_px+1, "px;")
+    
+    
+    
+    wellPanel(
+      style = style,
+      
+      p(HTML(paste0("<b> CH1 residue: </b>", ch_res, "<br/>",
+                    "<b> CH1 numbering: </b>", as.character(point$hid), "<br/>",
+                    "<b> CL residue: </b>", cl_res, "<br/>",
+                    "<b> CL numbering: </b>", as.character(point$lid), "<br/>",
+                    "<b> Distance: </b>", point$value, "<br/>")))
+    )
   })
   
   ###### TABPANEL:Show antibody numbering information ######
