@@ -43,6 +43,9 @@ LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 # on command line:
 # makeblastdb -in test.fasta -dbtype prot
 
+# CH1-CL Matrix dir:
+mtrix_dir="../ch1_cl_interface_matrix/matrix_results/"
+
 # Files required to display the numbering function
 vh_num_dir="../vcab_db/num_result/vnumbering_H.csv"
 vl_num_dir="../vcab_db/num_result/vnumbering_KL.csv"
@@ -1631,6 +1634,20 @@ server <- function(input,output,session){
                     "<b> Distance: </b>", point$value, "<br/>")))
     )
   })
+  
+  # Make the PDB file downloadable for users
+  output$download_matrix <- downloadHandler(
+    filename = function(){
+      iden_code <- struc_selected()
+      paste0(iden_code,"_CH1-CL_interface_matrix.txt")
+    },
+    content=function(file){
+      #file.copy(pdb_dir_val$dir,file)
+      iden_code <- struc_selected()
+      dir=paste0(mtrix_dir,iden_code,"_interface_dist_mtrx.txt")
+      file.copy(dir,file)
+    }
+  )
   
   ###### TABPANEL:Show antibody numbering information ######
   num_id <- reactive({
