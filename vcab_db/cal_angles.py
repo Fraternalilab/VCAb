@@ -362,7 +362,24 @@ def calc_ch1_cl_and_elbow_angle (iden_code,dssp_dir,pdb_dir,hcnum,lcnum):
         elbow_angle=np.nan
     return ch1_cl_angle,elbow_angle
 
+def combine_csvs(rf,cf):
+    """
+    For the update of csv files
+    check for the files presented in both result folder and current folder
+    1. Combine the common files in rf and cf into one, stored in rf.
+    :args rf: result folder: stores the old data
+    :args cf: current folder: stores the updated data(only the newly added part)
+    returns nothing
+    """
+    common_files=[fn for fn in os.listdir(rf) if os.path.exists(f"{cf}/{fn}") and (".csv" in fn)]
+    for f in common_files:
+        df1=pd.read_csv(f"{rf}/{f}").drop(columns=["Unnamed: 0"])
+        df2=pd.read_csv(f"{cf}/{f}").drop(columns=["Unnamed: 0"])
+        df3=pd.concat([df1,df2]).reset_index(drop=True)
+        if "Unnames: 0" in df3.columns:
+            df3=df3.drop(columns=["Unnamed: 0"])
 
+        df3.to_csv(f"{rf}/{f}")
 
 if __name__=="__main__":
     vcabfn="./vcab.csv"
@@ -396,3 +413,7 @@ if __name__=="__main__":
     #vcab=vcab.rename(columns={'heavy_subclass':"heavy_vfamily",'light_subclass':"light_vfamily"})
 
     vcab.to_csv("./final_vcab.csv")
+    combine_csvs("./result",".")
+    combine_csvs("./result/num_result/","./num_result/")
+    combine_csvs("./result/blast_result/","./blast_result/")
+    combine_csvs("./result/blast_result/flt_bl_result/","./blast_result/flt_bl_result/")

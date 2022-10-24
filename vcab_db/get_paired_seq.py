@@ -14,17 +14,37 @@ import Bio.PDB
 
 from anarci_vc import number,run_anarci,chain_type_to_class
 
-############ 1.1 Collect all the sequence from PDB ###########
+############ 1.1 Collect all the sequence/newly added sequence since last update from PDB ###########
 
-def collect_all_seq_info (fn):
+def collect_all_seq_info (fn,o_fn=None):
     """
-    Convert the fasta file (downloaded from PDB: https://ftp.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz)
-    into a dictionary in this format: {pdbid:chainid:seq}
-    :args fn:file name of the fasta file
+    1. Convert the fasta file (downloaded from PDB: https://ftp.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz)
+    into a dictionary in this format: {pdbid:{chainid:seq}}
+    2. Only collect the newly added PDB sequences since last update (if any)
+
+    :args fn:file name of the new fasta file
+    :args o_fn: file name of the old fasta file
     """
+
+    # Check if there are the old_pdb_seqs_existed:
+    if o_fn:
+        o_records=SeqIO.parse(o_fn,"fasta")
+        o_records_id=[r.id for r in o_records]
+
+        n_records=list(SeqIO.parse(fn,"fasta"))
+        n_records_id=[r.id for r in n_records]
+
+        added_id=set(n_records_id)-set(o_records_id)
+
+        records=[r for r in n_records if r.id in added_id]
+
+    else:
+        records=SeqIO.parse(fn,"fasta")
+
+
+    # Convert the Seq_records into this format:{pdbid:{chainid:seq}}
     result={}
-
-    for c,record in enumerate(SeqIO.parse(fn,"fasta")):
+    for record in records:
 
         title_lst=record.description.split(" ")
         seq=str(record.seq).replace("X","")
@@ -256,33 +276,28 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
     """
 
     result={}
-    errors=[]
 
+    errors=[]
 
     for pdb in pdb_lst:
         numbered=vnum_dict[pdb]
-
         try:
+        #if True:
             coor_seqs,pairs=new_pairHandL(pdb, numbered,struc_dir)
-        except:
-            errors.append(pdb)
-            continue
 
-        if pairs==[]: # Only includes paired H&L seqs
-            continue
+            if pairs==[]: # Only includes paired H&L seqs
+                continue
 
-        for pair in pairs:
-            h=pair[0]
-            l=pair[1]
+            for pair in pairs:
+                h=pair[0]
+                l=pair[1]
 
-            try:
                 vh_num_seq=numbered[h][0]
                 vh_imgt_num=",".join(numbered[h][1])
                 vl_num_seq=numbered[l][0]
                 vl_imgt_num=",".join(numbered[l][1])
 
-                id_code=f"{pdb}_{h[0]}{l[0]}"
-
+                id_code=f"{pdb}_{h}{l}"
                 result[id_code]=[pdb,h,l,
                             hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item(),
                             hvc.loc[hvc["Id"]==f"{pdb}_{h}","v_gene"].item(),
@@ -300,17 +315,16 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
 
                 assert len(result[id_code])==15, f"column length is shorter:{result[id_code]}"
 
-            except:
-                errors.append(f"{pdb}_{h}{l}")
-                """
-                the error happens because it can not return values for things like hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item()
-                This happens because one pdb have multiple H-L pairs,
-                for some chains, they are in the dataframe hvc,
-                for some chains, they are not.
-                But because they all have the same pdbid, so they are all in the pdb_lst of ab_vc_pdb.
-                These entries can simply be excluded.
-                """
-
+        except:
+            """
+            the error happens because it can not return values for things like hvc.loc[hvc["Id"]==f"{pdb}_{h}","identity_species"].item()
+            This happens because one pdb have multiple H-L pairs,
+            for some chains, they are in the dataframe hvc,
+            for some chains, they are not.
+            But because they all have the same pdbid, so they are all in the pdb_lst of ab_vc_pdb.
+            These entries can simply be excluded.
+            """
+            errors.append(pdb)
 
 
     col_names=["pdb","Hchain","Lchain","vh_species_hmm","heavy_vfamily","vl_species_hmm","light_vfamily",
@@ -321,6 +335,7 @@ def get_all_pHL_seqs(pdb_lst,seq_dict,vnum_dict,hvc,lvc,struc_dir):
     result_df.columns=col_names
     return result_df,errors
 
+
 ############################ Apply the functions ############################
 if __name__=="__main__":
 
@@ -328,8 +343,31 @@ if __name__=="__main__":
     today=date.today()
     update_date=today.strftime("%d%m%Y")
     downloaded_pdb_seqs=f"pdb_seqres_{update_date}.txt" # The file name (with directory) of the downloaded pdb seqs
-    #downloaded_pdb_seqs=f"pdb_seqres.txt" # The file name (with directory) of the downloaded pdb seqs
-    protein_pdb_seqs=f"pdb_protein_seqs{update_date}.json" # The output file name (with directory) of the filtered protein pdb seqs
+    protein_pdb_seqs=f"pdb_protein_seqs_updated_{update_date}.json" # The output file name (with directory) of the filtered protein pdb seqs(contain only the newly added one)
+
+    if os.path.exists("./num_result")==False:
+        os.mkdir("num_result")
+    if os.path.exists("./blast_result")==False:
+        os.mkdir("blast_result")
+    if os.path.exists("./result")==False:
+        os.mkdir("./result/")
+        os.system("mv *.csv result/")
+        os.system("cp -r num_result result/")
+        os.system("cp -r blast_result result/")
+    if os.path.exists("../seq_db/vcab_db/fasta")==False:
+        os.mkdir("../seq_db/vcab_db/fasta")
+        os.system("mv ../seq_db/vcab_db/*.fasta ../seq_db/vcab_db/fasta")
+
+    # Download PDB seqs:
+    urllib.request.urlretrieve('https://ftp.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz',f"pdb_seqres_{update_date}.txt.gz")
+    os.system(f"gzip -d pdb_seqres_{update_date}.txt.gz")
+
+    # Check if the old pdb sequence file existed
+    pdb_seq_fns=[i for i in os.listdir(".") if "pdb_seqres_" in i]
+    old_pdb_seq_fn=[i for i in pdb_seq_fns if i !=f"pdb_seqres_{update_date}.txt"]
+    old_pdb_seq_fn=old_pdb_seq_fn[0] if old_pdb_seq_fn!=[] else None
+
+
     struc_dir="../pdb_struc"
 
     # The prefix of the output file name (with directory) of the numbering csv file
@@ -337,12 +375,8 @@ if __name__=="__main__":
     o_cnum_out=f"num_result/o_cnumbering"
     cnum_out=f"num_result/cnumbering"
 
-    # Download PDB seqs:
-    urllib.request.urlretrieve('https://ftp.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz',f"pdb_seqres_{update_date}.txt.gz")
-    os.system(f"gzip -d pdb_seqres_{update_date}.txt.gz")
 
-
-    pdb_seq_dict=collect_all_seq_info (downloaded_pdb_seqs)
+    pdb_seq_dict=collect_all_seq_info (downloaded_pdb_seqs,old_pdb_seq_fn)
     with open(protein_pdb_seqs, "w") as outfile:
         json.dump(pdb_seq_dict, outfile)
 

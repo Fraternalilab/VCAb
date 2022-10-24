@@ -1524,6 +1524,10 @@ def add_disulfide_info(df,c_pdb_dir):
 
 def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
     df=o_df.copy()
+    df["Alternative_VH_allele"]=[i if type(i)==str else "" for i in df["Alternative_VH_allele"]]
+    df["Alternative_VL_allele"]=[i if type(i)==str else "" for i in df["Alternative_VL_allele"]]
+    df["Alternative_Htype"]=[i if type(i)==str else "" for i in df["Alternative_Htype"]]
+    df["Alternative_Ltype"]=[i if type(i)==str else "" for i in df["Alternative_Ltype"]]
     species=[]
     for i in df.index:
 
@@ -1572,7 +1576,7 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
 
                 """
                 Sometimes for the V domains identified as "humanized" (in the format of "Humanized: human, other species"),
-                if the "other species" is alosp present in the C domains,
+                if the "other species" is also present in the C domains,
                 it is more likely that this antibody is not "humanized" (because C domains should be human, not other species).
                 Cases like this should be corrected.
                 """
@@ -1635,6 +1639,23 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
 
     return df
 
+def combine_fastas(rf,cf):
+    """
+    For the update of seq_db/vcab_db:
+    check for the files presented in both result folder and current folder
+    1. Combine the common files in rf and cf into one, stored in rf.
+    :args rf: result folder: stores the old data
+    :args cf: current folder: stores the updated data(only the newly added part)
+    returns nothing
+    """
+    common_files=[fn for fn in os.listdir(rf) if os.path.exists(f"{cf}/{fn}")]
+    for f in common_files:
+        if ".fasta" in f:
+            #print (f)
+
+            os.system(f"cat {rf}/{f} {cf}/{f} > {cf}/combined_{f}")
+            os.system(f"mv {cf}/combined_{f} {rf}/{f}")
+
 ############################ Apply the functions ############################
 if __name__=="__main__":
     # Used variables:
@@ -1663,12 +1684,13 @@ if __name__=="__main__":
         pHL=pHL.rename(columns={"H_coor_seq":"H_coordinate_seq","L_coor_seq":"L_coordinate_seq"})
     cHL1=collapse_by_coordinate_seqs (pHL) # collapse the entries based on the coordinate sequences
     cHL1.to_csv("collapsed_paired_ab.csv")
-    print ("test_this_file")
-    cHL1=pd.read_csv("collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
+    #print ("test_this_file")
+    #cHL1=pd.read_csv("collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
     print ("collapsing completed")
     cHL,error=gather_pdbeinfo_for_all(cHL1,full_pdb_dir)
     cHL.to_csv("final_collapsed_paired_ab.csv")
     print("pdbe info collected")
+
 
     #with open(f'./pdbe_info_not_collected_lst.txt','w') as output:
     #    output.write(','.join(error))
@@ -1731,15 +1753,15 @@ if __name__=="__main__":
     #flt_hbl=pd.read_csv("./blast_result/flt_bl_result/flt_h_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
     #flt_lbl=pd.read_csv("./blast_result/flt_bl_result/flt_l_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
 
-    #cHL=pd.read_csv("final_collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
+    cHL=pd.read_csv("final_collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
     iso_vcab=add_all_domain_species_type (cHL,flt_vhbl,flt_vlbl,flt_hbl,flt_lbl,8,8,8,8,collapsed_v_alleles,collapsed_c_alleles)
     iso_vcab.to_csv("iso_vcab.csv")
 
     print ("identifying struc_cov")
     # For test:
     #iso_vcab=pd.read_csv("iso_vcab.csv").drop(columns=["Unnamed: 0"])
-    #hcoorbl=pd.read_csv("./blast_result/h_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
-    #lcoorbl=pd.read_csv("./blast_result/l_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+    hcoorbl=pd.read_csv("./blast_result/h_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+    lcoorbl=pd.read_csv("./blast_result/l_coordinate_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
 
     vcab_iso_cov=add_struc_cov(iso_vcab,hcoorbl,lcoorbl)
     vcab_iso_cov.to_csv("iso_cov_vcab.csv")
@@ -1767,12 +1789,15 @@ if __name__=="__main__":
 
     print ("adding disulfide")
     vcab0=add_disulfide_info(ff_vcab,"../pdb_struc/c_pdb/")
-    #vcab.to_csv("not_filtered_vcab.csv")
+    vcab0.to_csv("disul_vcab.csv")
 
     print("adding species")
+    # For test:
+    #vcab0=pd.read_csv("disul_vcab.csv").drop(columns=["Unnamed: 0"])
     vcab=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
     vcab.to_csv("./vcab.csv")
 
+    # Change this part!!!!
     print ("generating files for shiny app")
     convert_seq_from_df_to_fasta(vcab,'H_seq',"../seq_db/vcab_db")
     convert_seq_from_df_to_fasta(vcab,'H_coordinate_seq',"../seq_db/vcab_db")
@@ -1782,10 +1807,11 @@ if __name__=="__main__":
 
     convert_seq_from_df_to_fasta (vcab,'HV_seq',"../seq_db/vcab_db")
     convert_seq_from_df_to_fasta (vcab,'LV_seq',"../seq_db/vcab_db")
+    combine_fastas("../seq_db/vcab_db/fasta","../seq_db/vcab_db")
 
     os.system ("sh mk_vcab_bl_db.sh")
 
 
 
-    os.system("python cal_angles_new.py")
-    os.system("python cal_interface_matrix_new.py")
+    os.system("python cal_angles.py")
+    os.system("python cal_interface_matrix.py")
