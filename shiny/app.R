@@ -9,7 +9,7 @@ library (ggplot2)
 library(seqinr)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/final_vcab.csv"
+vcab_dir="../vcab_db/result/final_vcab.csv"
 pops_parent_dir <- "../pops/result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
@@ -47,10 +47,10 @@ LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 mtrix_dir="../ch1_cl_interface_matrix/matrix_results/"
 
 # Files required to display the numbering function
-vh_num_dir="../vcab_db/num_result/vnumbering_H.csv"
-vl_num_dir="../vcab_db/num_result/vnumbering_KL.csv"
-ch_num_dir="../vcab_db/num_result/new_cnumbering_H_C1.csv"
-cl_num_dir="../vcab_db/num_result/new_cnumbering_KL_C.csv"
+vh_num_dir="../vcab_db/result/num_result/vnumbering_H.csv"
+vl_num_dir="../vcab_db/result/num_result/vnumbering_KL.csv"
+ch_num_dir="../vcab_db/result/num_result/cnumbering_H_C1.csv"
+cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
 
 vh_num=read.csv(vh_num_dir)
 vl_num=read.csv(vl_num_dir)
@@ -63,8 +63,8 @@ total_dom_info=read.csv(file=dom_info_dir)
 # NOTE: unlike the previous version, total_dom_info is a list now. CHANGES SHOULD BE MADED RELATED TO THIS VARIABLE.
 #total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
 
-h_author_seq_bl_dir="../vcab_db/blast_result/best_h_seq_bl_result.csv" 
-h_coor_seq_bl_dir="../vcab_db/blast_result/best_h_coordinate_seq_bl_result.csv"
+h_author_seq_bl_dir="../vcab_db/result/blast_result/best_h_seq_bl_result.csv" 
+h_coor_seq_bl_dir="../vcab_db/result/blast_result/best_h_coordinate_seq_bl_result.csv"
 t_h_author_bl=read.csv(h_author_seq_bl_dir)
 t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
@@ -75,7 +75,7 @@ t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
-
+o_vcab=o_vcab[,!(names(o_vcab) %in% c("X","vh_species_hmm","vl_species_hmm"))]
 # Read the unusual case csv
 #all_unusual_cases = read.csv(file = '../vcab_db/unusual_cases/all_unusual_cases.csv')
 #all_unusual_cases = all_unusual_cases[, 3:ncol(all_unusual_cases)]
@@ -759,9 +759,14 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir){
   data$lid <- factor(data$lid,levels=imgt_numbering,ordered=TRUE)
   #return (data)
   
-  ggplot(data,aes_string("hid","lid",fill="value"))+
+  #data[,"value"]<- unlist(lapply(data[,"value"], function(x){if(x==0) Inf else x}))
+  data[,"value"]<- unlist(lapply(data[,"value"], function(x){if(x==0) NA else x}))
+  
+  
+  ggplot(data,aes(hid,lid,fill=value))+
     geom_tile()+
-    scale_fill_gradient(low="white", high="darkorange2", name = "distance\nbetween\nC-alpha's (A)")+
+    #scale_fill_gradient(low="white", high="darkorange2", name = "distance\nbetween\nC-alpha's (Å)")+
+    scale_fill_gradient(high="lightyellow", low="darkorange2", name = "distance\nbetween\nC-alpha's (Å)",na.value = "transparent")+
     labs(x="CH1 numbeirng",y="CL numbering")+
     theme(
       axis.text.x=element_blank(),
@@ -770,7 +775,7 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir){
       axis.ticks.y=element_blank(),
       axis.title.y = element_text(color = "black", size = 16, angle = 90, hjust = .5, vjust = .5, face = "bold"),
       axis.title.x = element_text(color = "black", size = 16, angle = 0, hjust = .5, vjust = .5, face = "bold"),
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background=element_blank()
     )
   
   
@@ -1111,7 +1116,8 @@ ui <- fluidPage(
                       ## Allow the user to download the entire database
                       downloadButton("download",label="Download all entries in VCAb"),
                       br(),
-                      downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
+                      downloadButton("download_all_num_seqs",label="Download all the numbered sequences in VCAb"),
+                      #downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
                       br(),br(),br(),br(),br(),br()
                       
              ),
@@ -1600,11 +1606,13 @@ server <- function(input,output,session){
     plotData <- int_matrix_plot0()$data
     point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
     if (nrow(point) == 0) return(NULL)
-    if (point$value == 0) return(NULL)
+    if (is.na(point$value)) return(NULL)
+    
     iden_code<- struc_selected()
     interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid))
     ch_res=interface_residues$hres
     cl_res=interface_residues$lres
+    
     
     
     # calculate point position INSIDE the image as percent of total dimensions
@@ -2108,6 +2116,40 @@ server <- function(input,output,session){
     content=function(file){
       write.csv(vcab_download,file)
     }
+  )
+  output$download_all_num_seqs <- downloadHandler(
+    filename=function(){
+      o_time=Sys.time()
+      o1 <- gsub(" ","",o_time)
+      o2 <- gsub(":","",o1)
+      o3 <- gsub("-","",o2)
+      final_time <- o3
+      paste0("Sequences_numbering_info",final_time,".zip")
+    },
+    content=function(f_name){
+      
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      vhnum=vh_num[unlist(lapply(vh_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vh_num) %in% c("X","hmm_species"))]
+      vlnum=vl_num[unlist(lapply(vl_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vl_num) %in% c("X","hmm_species"))]
+      chnum=ch_num[unlist(lapply(ch_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(ch_num) %in% c("X","hmm_species"))]
+      clnum=cl_num[unlist(lapply(cl_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(cl_num) %in% c("X","hmm_species"))]
+      
+      rownames(vhnum) <- NULL
+      rownames(vlnum) <- NULL
+      rownames(chnum) <- NULL
+      rownames(clnum) <- NULL
+      
+      write.csv(vhnum,file.path(temp_directory,"vh_numbering_info.csv"))
+      write.csv(vlnum,file.path(temp_directory,"vl_numbering_info.csv"))
+      
+      write.csv(chnum,file.path(temp_directory,"ch_numbering_info.csv"))
+      write.csv(clnum,file.path(temp_directory,"cl_numbering_info.csv"))
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
   )
   #all_unusual = all_unusual_cases
   #output$download_unusual <- downloadHandler(
