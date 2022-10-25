@@ -195,14 +195,13 @@ def map_aln_pos_to_pure_seq_pos (aln_pos,aln_seq):
     return pure_seq_pos
 
 # 3. Convert IMGT numbering(author_seq) into pure_position(coor_seq)
-def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_dir,struc_chain_id=None,num_scheme=imgt_numbering,if_pops=True):
+def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_dir,num_scheme=imgt_numbering):
     """
     Returned a list in this format {imgt_numbering:[res_obj, if_interface_residue]}
     :args chainType: can only be "H" or "L"
     :args num_df: the df outputed by anarci_c containing the C_numbering results
     :args pdb_dir: the directory of the c_pdb files
     :args num_scheme: the list containing all the numbering we want to included into the interface matrix
-    :args struc_chain_id: the chain id in the pdb file in case the chain id doesn't work (such as "HHH")
     """
     pdbid=iden_code.split("_")[0]
     chainTypeNum=0
@@ -223,10 +222,7 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
     # Get the structural_object of the chain
     parser=Bio.PDB.PDBParser()
     structure=parser.get_structure(iden_code,f"{pdb_dir}/{iden_code}_C.pdb")
-    try:
-        chain_obj=structure[0][chain]
-    except:
-        chain_obj=structure[0][struc_chain_id]
+    chain_obj=structure[0][chain]
 
     coor_seq_info=[res for res in chain_obj if res.resname !="X" and res.id[0]==' ']
     #return coor_seq_info
@@ -242,8 +238,7 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
     alned_coor_seq=pair_aln.seqB
 
     # Read POPS File
-    if if_pops:
-        pops=read_pops_file(iden_code,pops_dir)[chainTypeNum]
+    pops=read_pops_file(iden_code,pops_dir)[chainTypeNum]
 
     # 2. Convert IMGT_num_pos into pure_pos of coor_seq
     # IMGT_num --> pure_pos (imgt_seq) -->aln_pos (imgt_seq)=aln_pos(coor_seq) -->pure_pos (coor_seq)
@@ -276,12 +271,10 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
                 coor_seq_pure_pos=map_aln_pos_to_pure_seq_pos(coor_seq_aln_pos,alned_coor_seq)
 
                 res_obj=coor_seq_info[coor_seq_pure_pos]
-                if if_pops:
-                    if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
-                else:
-                    if_interface_res=np.nan
+                if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
                 result[i]=[res_obj,if_interface_res]
     return result
+    #return test
 
 # 4. Generate the distance matrix
 def generate_distance_matrix (iden_code,pdb_dir,pops_dir,hcnum,lcnum):
@@ -366,61 +359,10 @@ def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
     labels={i:[new_abs_ordered[i]]+list(df.loc[df["iden_code"]==new_abs_ordered[i],["Htype","Ltype"]].values[0]) for i in range(len(new_abs_ordered))}
     return result,labels
 
-# Functions to reformat the C region numbering files to double check for VCB vc_boundary
-def reformatting_c_numbering(vcab,chnum,clnum,pdb_dir,pops_dir):
-
-    chnum=chnum.copy()
-    clnum=clnum.copy()
-
-    def delete_residues(total_num_df,id_code,num_info):
-        """
-        delete the extra residues (which should V region tail) in the C region numbering
-        (change the residue value into "-")
-        :args total_num_df: total chnum or clnum containing all the entries
-        :args id_code: pdb_SingleChainID
-        :args num_info: dictionary returned from map_imgt_numbering_to_residue_info: {numbering:[residue,if_interface]}
-        Note: this function doesn't return anything. It did modification on the total_num_df
-        """
-        num_df=total_num_df.loc[total_num_df["Id"]==id_code]
-
-        for numbering,res_info in num_info.items():
-            if numbering in ["1H","1G","1F","1E","1D","1C","1B","1A"]:
-                residue=res_info[0]
-
-                if type(residue)==float and np.isnan(residue):
-                    # Get the index of the row in total_num_df:
-                    df_index=num_df.index[0]
-                    # Change the value in total_num_df:
-                    total_num_df.loc[df_index,numbering]="-"
-
-
-        return None
-
-    for i in vcab.index:
-
-        iden_code=vcab.loc[i,"iden_code"]
-        pdb,hl=iden_code.split("_")
-        h,l=hl
-
-        h_struc_id=vcab.loc[i,"Hchain"].split(";")[0]
-        l_struc_id=vcab.loc[i,"Lchain"].split(";")[0]
-        try:
-            hid=f"{pdb}_{h}"
-            chnum_info=map_imgt_numbering_to_residue_info(iden_code,"H",chnum,pdb_dir,pops_dir,struc_chain_id=h_struc_id,if_pops=False)
-
-            lid=f"{pdb}_{l}"
-            clnum_info=map_imgt_numbering_to_residue_info(iden_code,"L",clnum,pdb_dir,pops_dir,struc_chain_id=l_struc_id,if_pops=False)
-
-            delete_residues(chnum,hid,chnum_info)
-            delete_residues(clnum,lid,clnum_info)
-        except:
-            print (iden_code,h_struc_id,l_struc_id)
-
-    return chnum,clnum
 
 
 ######### APPLY THE FUNCTIONS ##############
-vcab=pd.read_csv("./final_vcab.csv").drop(columns=["Unnamed: 0"])
+vcab=pd.read_csv("./result/final_vcab.csv").drop(columns=["Unnamed: 0"])
 hcnum=pd.read_csv("./num_result/cnumbering_H_C1.csv")
 lcnum=pd.read_csv("./num_result/cnumbering_KL_C.csv")
 
@@ -430,16 +372,6 @@ pops_dir="../pops/result"
 
 mtrx_out_dir="../ch1_cl_interface_matrix/matrix_results/"
 #os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
-
-print ("generating files for shiny")
-n_chnum,n_clnum=reformatting_c_numbering(vcab,hcnum,lcnum,pdb_dir,pops_dir)
-
-nn_chnum=n_chnum.loc[map(lambda x:x in list(map(lambda i: i[0:6],vcab["iden_code"].values)) ,n_chnum["Id"])]
-nn_clnum=n_clnum.loc[map(lambda x: x in list(map(lambda i: f"{i[0:4]}_{i[-1]}",vcab["iden_code"].values)),n_clnum["Id"])]
-
-nn_chnum.to_csv("num_result/new_cnumbering_H_C1.csv",index=False)
-nn_clnum.to_csv("num_result/new_cnumbering_KL_C.csv",index=False)
-
 
 print ("Calculating interface matrix")
 int_mtrx_not_calculated=[]
@@ -458,7 +390,6 @@ for i in vcab.index:
 
 with open("../ch1_cl_interface_matrix/mtrx_not_calculated.txt", 'w') as f:
     f.write(",".join(int_mtrx_not_calculated))
-
 
 print ("Calculating distance matrix of interface matrices")
 # Calculate the distance matrix of dm (matrix of the interface distance index)
