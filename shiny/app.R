@@ -52,10 +52,12 @@ vl_num_dir="../vcab_db/result/num_result/vnumbering_KL.csv"
 ch_num_dir="../vcab_db/result/num_result/cnumbering_H_C1.csv"
 cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
 
-vh_num=read.csv(vh_num_dir)
-vl_num=read.csv(vl_num_dir)
-ch_num=read.csv(ch_num_dir)
-cl_num=read.csv(cl_num_dir)
+vh_num=read.csv(vh_num_dir, row.names = 1)
+vl_num=read.csv(vl_num_dir, row.names = 1)
+ch_num=read.csv(ch_num_dir, row.names = 1)
+cl_num=read.csv(cl_num_dir, row.names = 1)
+
+
 
 # Files required to plot the seq_cov plot
 dom_info_dir="../vcab_db/h_domains_info.csv" 
@@ -1100,7 +1102,8 @@ ui <- fluidPage(
                       sidebarLayout(
                         sidebarPanel(
                           checkboxGroupInput(inputId = "stat", label="The statistics of VCAb based on:",
-                                             choices=c("Isotypes"="Htype_val",
+                                             choices=c("Species"="Species",
+                                                       "Isotypes"="Htype_val",
                                                        "Light chain types"="Ltype_val",
                                                        "Structural Coverage"="Structural.Coverage")),
                           uiOutput("total_ab_enties")
@@ -2084,26 +2087,53 @@ server <- function(input,output,session){
     vcab_copy=data.frame(vcab)
     vcab_copy$Htype_val=unlist(lapply(vcab_copy$Htype,function(x){strsplit(x,"\\(")[[1]][1]}))
     vcab_copy$Ltype_val=unlist(lapply(vcab_copy$Ltype,function(x){strsplit(x,"\\(")[[1]][1]}))
+    vcab_copy$Species=unlist(lapply(vcab_copy$Species,function(x){strsplit(x,":")[[1]][1]}))
     if (length(in_value)==1){
       ggplot(vcab_copy,aes_string(in_value))+
         geom_bar() +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1)
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1)
     }
     else if (length(in_value)==2){
       in_value <- sort(in_value)
+      if("Species" %in% in_value){
+        in_value[2]=ifelse(in_value[1]=="Species",in_value[2],in_value[1])
+        in_value[1]="Species"
+      }
       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
-        geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
+        geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1, position = position_dodge2(width = 0.8)) 
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8)) 
     }
     else if (length(in_value)==3){
       in_value <- sort(in_value)
       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
-        geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
+        geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() +
-        facet_wrap(~ get(in_value[3])) + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1, position = position_dodge2(width = 0.8))
+        facet_grid(~ get(in_value[3]), scales = "free", space = "free_x") + 
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8))
+    }
+    else if (length(in_value)==4){
+       in_value <- sort(in_value)
+       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
+         geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+#         scale_alpha_manual(values=c(1, 0.5)) +
+         theme(
+           axis.text.x=element_text(angle = 90)
+         ) +
+         scale_y_log10() +
+         facet_grid(get(in_value[4]) ~ get(in_value[3]), scales = "free", space = "free_x") + 
+         geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8))
+         
     }
     
     
