@@ -753,7 +753,7 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir){
   
   data <- df %>% 
     rownames_to_column("lid") %>%
-    pivot_longer(-c(lid), names_to = "hid", values_to = "value")
+    tidyr::pivot_longer(-c(lid), names_to = "hid", values_to = "value")
   
   
   data=as.data.frame(data)
@@ -1622,6 +1622,9 @@ server <- function(input,output,session){
     # from left (horizontal) and from top (vertical)
     left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
     top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    
+    left_pct <- ifelse(left_pct>0.7,0.7,left_pct)
+    top_pct <- ifelse(top_pct<0.4,0.4,top_pct)
     
     # calculate distance from left and bottom side of the picture in pixels
     left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
