@@ -10,7 +10,7 @@ library(seqinr)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/final_vcab.csv"
-pops_parent_dir <- "../pops/result/"
+pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
@@ -44,7 +44,8 @@ LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 # makeblastdb -in test.fasta -dbtype prot
 
 # CH1-CL Matrix dir:
-mtrix_dir="../ch1_cl_interface_matrix/matrix_results/"
+mtrix_dir="../ch1_cl_interface_matrix/complete_matrix/"
+res_info_dir="../res_info/"
 
 # Files required to display the numbering function
 vh_num_dir="../vcab_db/result/num_result/vnumbering_H.csv"
@@ -352,7 +353,7 @@ generate_pops_info <- function(pdb_c){
   # type_pdb_c: the name of the antibody in this format: "igg1_k_7c2l_HL"
   # pdb_c: the name of the antibody in this format: "7c2l_HL"
   
-  pops_dir <- paste(pops_parent_dir,pdb_c,"_C_deltaSASA_rpopsResidue.txt",sep='')
+  pops_dir <- paste(pops_parent_dir,pdb_c,"_deltaSASA_rpopsResidue.txt",sep='')
   pops_file <- read.csv(file=pops_dir, sep=' ')
   new_pops <- pops_file%>% dplyr::filter(D_SASA.A.2>15) #filtered pops file
   new_pops <- new_pops[,c("Chain","ResidNe","ResidNr","D_SASA.A.2")] # only show these four columns
@@ -377,6 +378,9 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   if(grepl(",", allele_info)) allele=strsplit(allele_info,",")[[1]][1]
   else allele=strsplit(allele_info,":")[[1]][1]
   
+  #species=strsplit(sp_allele,"\\|")[[1]][1]
+  #allele=strsplit(sp_allele,"\\|")[[1]][2]
+  
   # (1) annotation of domain starts/end points of the reference allele
   dom_positions = ref_dom[ref_dom$q==allele,]
   rownames(dom_positions) <- NULL
@@ -385,29 +389,37 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   ref_end=tail(dom_positions,n=1)$b
   
   # (2) annotation of the coverage of reference / author sequence / coordinate sequence
-  author_hit_info=head(t_author_bl[(t_author_bl$iden_code==iden_code)&(t_author_bl$matched_alleles==allele),],n=1)
-  coor_hit_info=head(t_coor_bl[(t_coor_bl$iden_code==iden_code)&(t_coor_bl$matched_alleles==allele),],n=1)
+  author_hit_info=head(t_author_bl[t_author_bl$iden_code==iden_code,],n=1)
+  coor_hit_info=head(t_coor_bl[t_coor_bl$iden_code==iden_code,],n=1)
   
   author_start=author_hit_info$start_ref
   author_end=author_hit_info$end_ref
   coor_start=coor_hit_info$start_ref
   coor_end=coor_hit_info$end_ref
   
+  #coverage_pos <- data.frame(
+  #  a = c(ref_start, author_start, coor_start), b = c(ref_end, author_end, coor_end), # start and end
+  #  q = c(allele, 'author', 'coords') # indicate sequence type
+  #)
   coverage_pos <- data.frame(
-    a = c(ref_start, author_start, coor_start), b = c(ref_end, author_end, coor_end), # start and end
-    q = c(allele, 'author', 'coords') # indicate sequence type
+    a = c(author_start, coor_start), b = c(author_end, coor_end), # start and end
+    q = c('author', 'coords') # indicate sequence type
   )
   
   # order the sequence type annotation for the plot
   dom_positions$q <- factor(dom_positions$q, 
-                            levels = c(allele, 'author', 'coords'),
-                            labels = c(paste0('reference\n',allele), 
-                                       'author-submitted\nsequence (HC)',
-                                       'atomic\ncoordinate (HC)'))
+                            levels = c('author', 'coords',allele),
+                            labels = c('author-submitted\nsequence (HC)',
+                                       'atomic\ncoordinate (HC)',
+                                       paste0('reference\n',allele)))
+  #coverage_pos$q <- factor(coverage_pos$q, 
+  #                         levels = c(allele, 'author', 'coords'),
+  #                         labels = c(paste0('reference\n',allele), 
+  #                                    'author-submitted\nsequence (HC)',
+  #                                    'atomic\ncoordinate (HC)'))
   coverage_pos$q <- factor(coverage_pos$q, 
-                           levels = c(allele, 'author', 'coords'),
-                           labels = c(paste0('reference\n',allele), 
-                                      'author-submitted\nsequence (HC)',
+                           levels = c('author', 'coords'),
+                           labels = c('author-submitted\nsequence (HC)',
                                       'atomic\ncoordinate (HC)'))
   
   #return (list("dom_pos"=dom_positions,"cov_pos"=coverage_pos))
@@ -422,7 +434,7 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   {
     # prepare the ggplot canvas
     ggplot(tb, aes(xmin = a, xmax = b, y = q)) + 
-      scale_y_discrete(drop = FALSE, name = "") +
+      scale_y_discrete(drop = FALSE, name = "") + 
       scale_x_continuous(labels = seq(1, ref_end, by = 100), name = "AA position",
                          breaks = seq(1, ref_end, by = 100)) + theme_bw()
   }
@@ -437,7 +449,7 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
               aes_string(xmin = start_column_name, xmax = end_column_name),
               ymin = as.numeric(tb[, y_column_name]) - 0.1,
               ymax = as.numeric(tb[, y_column_name]) + 0.1,
-              fill = "grey80")
+              fill = "grey60")
   }
   
   draw_dom_position <- function(tb, y_column_name)
@@ -445,17 +457,25 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
     # draw the domain boundaries with dark coloured rectangles
     # y_column_name refers to ref/author/coords (all should be 'ref'! - 
     # just so that ggplot2 knows on which horizontal line to put the rect)
-    geom_rect(ymin = as.numeric(tb[, y_column_name]) - 0.1,
-              ymax = as.numeric(tb[, y_column_name]) + 0.1) 
+    geom_rect(#ymin = as.numeric(tb[, y_column_name]) - 0.1,
+      #ymax = as.numeric(tb[, y_column_name]) + 0.1,
+      data=tb,
+      ymin = 0,
+      ymax = 100,
+      aes_string(fill = "dom",alpha=0.5)
+    ) 
   }
   
   # actual plotting
   g <- prepare_plot(dom_positions)
+  g <- g + draw_dom_position(dom_positions, "q")
   g <- g + draw_coverage(coverage_pos, start_column_name = "a",
                          end_column_name = "b", y_column_name = "q")
-  g <- g + draw_dom_position(dom_positions, "q")
-  g <- g + geom_text(aes(label = dom, x = label_pos), colour = "white")
-  g <- g + theme(axis.text = element_text(size = 12))
+  
+  g <- g + geom_text(data=dom_positions,aes(label = dom, x = label_pos), colour = "white", fontface = "bold")
+  g <- g + theme(axis.text = element_text(size = 12),
+                 legend.position="none",
+                 panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background=element_blank())
   # 'g' is the ggplot2 object to be rendered/printed:
   return (g)
   
@@ -721,35 +741,46 @@ extract_seq_from_num_df <- function(df,Id_code){
   
 }
 
-get_res_info_in_matrix <- function(iden_code,chnumbering,clnumbering){
+get_res_info_in_matrix <- function(iden_code,hnumbering,lnumbering,res_info_dir){
   #chnumbering,clnumbering: the numbering of ch, cl residues
   pdb=strsplit(iden_code,"_")[[1]][1]
   hl=strsplit(iden_code,"_")[[1]][2]
   hid=paste0(pdb,"_",substr(hl,1,1))
   lid=paste0(pdb,"_",substr(hl,2,2))
   
-  chnum=extracting_num_df(hid,ch_num)
-  clnum=extracting_num_df(lid,cl_num)
+  hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  hnum[,"IMGT_numbering_summary"] <-paste0(hnum$imgt_numbering,"(",hnum$VorC,")")
+  lnum[,"IMGT_numbering_summary"] <-paste0(lnum$imgt_numbering,"(",lnum$VorC,")")
   
-  hres= if(chnumbering %in% chnum["numbering",]) chnum["residues",which(as.vector(chnum["numbering",,drop = TRUE])==chnumbering)] else "-"
-  lres= if(clnumbering %in% clnum["numbering",]) clnum["residues",which(as.vector(clnum["numbering",,drop = TRUE])==clnumbering)] else "-"
+  hres= if(hnumbering %in% hnum[,"IMGT_numbering_summary"]) hnum[hnum[,"IMGT_numbering_summary"]==hnumbering,"residue"] else "-"
+  lres= if(lnumbering %in% lnum[,"IMGT_numbering_summary"]) lnum[lnum[,"IMGT_numbering_summary"]==lnumbering,"residue"] else "-"
   
-  return (list("hres"=hres,"lres"=lres))
+  hpdb= if(hnumbering %in% hnum[,"IMGT_numbering_summary"]) hnum[hnum[,"IMGT_numbering_summary"]==hnumbering,"pdb_numbering"] else NULL
+  lpdb= if(lnumbering %in% lnum[,"IMGT_numbering_summary"]) lnum[lnum[,"IMGT_numbering_summary"]==lnumbering,"pdb_numbering"] else NULL
+  
+  return (list("hres"=hres,"lres"=lres,"hpdb"=hpdb, "lpdb"=lpdb))
+  
 }
 
-plot_interface_mtrix <- function(iden_code,mtrix_dir){
-  imgt_numbering=c('1H','1G','1F','1E','1D','1C','1B','1A','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15',
-                   '15A','15B','15C','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','34','35','36',
-                   '37','38','39','40','41','42','43','44','45','45A','45B','45C','45D','45E','45F','45G','77','78','79','80','81',
-                   '82','83','84','84A','84B','84C','84D','84E','84F','84G','85G','85F','85E','85D','85C','85B','85A','85','86',
-                   '87','88','89','90','91','92','93','94','95','96','96A','96B','97','98','99','100','101','102','103','104',
-                   '105','106','107','108','109','110','111','112','113','114','115','116','117','118','119','120','121','122',
-                   '123','124','125','126','127','128')
-  mtrix=scan(paste0(mtrix_dir,"/",iden_code,"_interface_dist_mtrx.txt"))
-  mtrix=matrix(mtrix,ncol=length(imgt_numbering))
+plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
+  # if_alpha: the column name of the data table (which is defined in this function), can only be NULL or "if_both_interface"
+  
+  h_numbering <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  l_numbering <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  h_numbering[,"IMGT_numbering_summary"] <-paste0(h_numbering$imgt_numbering,"(",h_numbering$VorC,")")
+  l_numbering[,"IMGT_numbering_summary"] <-paste0(l_numbering$imgt_numbering,"(",l_numbering$VorC,")")
+  
+  #vh_res=h_numbering[h_numbering$VorC=="V",]
+  #vl_res=l_numbering[l_numbering$VorC=="V",]
+  #vh_start=vh_res[1,"IMGT_numbering_summary"]
+  #vh_end=vh_res[nrow(vh_res),"IMGT_numbering_summary"]
+  
+  mtrix=scan(paste0(mtrix_dir,"/",iden_code,".txt"))
+  mtrix=matrix(mtrix,nrow=nrow(l_numbering),ncol=nrow(h_numbering))
   df=as.data.frame(mtrix)
-  colnames(df)<-imgt_numbering
-  rownames(df)<-imgt_numbering
+  colnames(df)<-h_numbering$IMGT_numbering_summary
+  rownames(df)<-l_numbering$IMGT_numbering_summary
   
   data <- df %>% 
     rownames_to_column("lid") %>%
@@ -757,27 +788,41 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir){
   
   
   data=as.data.frame(data)
-  data$hid <- factor(data$hid,levels=imgt_numbering,ordered=TRUE)
-  data$lid <- factor(data$lid,levels=imgt_numbering,ordered=TRUE)
+  data$hid <- factor(data$hid,levels=h_numbering$IMGT_numbering_summary,ordered=TRUE)
+  data$lid <- factor(data$lid,levels=l_numbering$IMGT_numbering_summary,ordered=TRUE)
+  colnames(h_numbering)[which(colnames(h_numbering) =="if_interface")] <- "if_h_interface"
+  colnames(l_numbering)[which(colnames(l_numbering) =="if_interface")] <- "if_l_interface"
+  data <- merge(data, h_numbering[, c("IMGT_numbering_summary", "if_h_interface")], by.x = "hid", by.y = "IMGT_numbering_summary",
+                all.x = TRUE, all.y = FALSE, sort = FALSE)
+  data <- merge(data, l_numbering[, c("IMGT_numbering_summary", "if_l_interface")], by.x = "lid", by.y = "IMGT_numbering_summary",
+                all.x = TRUE, all.y = FALSE, sort = FALSE)
+  
+  data$if_both_interface <- apply(data[, c("if_h_interface", "if_l_interface", "hid", "lid")], MARGIN = 1, 
+                                  function(x){
+                                    y <- ifelse(as.numeric(x[1])==1 && as.numeric(x[2])==1,1,0)
+                                    y <- ifelse((grepl("V", x[3]) && grepl("V", x[4])) | 
+                                                  (grepl("C", x[3]) && grepl("C", x[4])), y, 0)
+                                    return(y)
+                                  })
+  data$if_both_interface <- factor(data$if_both_interface)
+  #data$h_res <- unlist(lapply(data$hid,function(x){h_numbering[h_numbering$IMGT_numbering_summary==x,"res_code"]}))
   #return (data)
   
-  #data[,"value"]<- unlist(lapply(data[,"value"], function(x){if(x==0) Inf else x}))
-  data[,"value"]<- unlist(lapply(data[,"value"], function(x){if(x==0) NA else x}))
-  
-  
-  ggplot(data,aes(hid,lid,fill=value))+
+  ggplot(data,aes_string("hid","lid",fill="value",alpha=if_alpha))+
     geom_tile()+
-    #scale_fill_gradient(low="white", high="darkorange2", name = "distance\nbetween\nC-alpha's (Å)")+
-    scale_fill_gradient(high="lightyellow", low="darkorange2", name = "distance\nbetween\nC-alpha's (Å)",na.value = "transparent")+
-    labs(x="CH1 numbeirng",y="CL numbering")+
+    scale_fill_gradient(low="darkorange1", high="white", name = "distance\nbetween\nC-alpha's (Å)",na.value = "transparent")+
+    scale_alpha_discrete(range=c(0.1,1),guide="none") +
+    #geom_segment(aes)
+    labs(x="H numbering",y="L numbering")+
     theme(
       axis.text.x=element_blank(),
       axis.ticks.x=element_blank(),
       axis.text.y=element_blank(),
       axis.ticks.y=element_blank(),
+      #axis.line.x=element_line(color=ifelse(sapply(strsplit(data$hid,"\\("),"[[", 2)=="V)","blue","orange")),
       axis.title.y = element_text(color = "black", size = 16, angle = 90, hjust = .5, vjust = .5, face = "bold"),
       axis.title.x = element_text(color = "black", size = 16, angle = 0, hjust = .5, vjust = .5, face = "bold"),
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background=element_blank()
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
     )
   
   
@@ -800,10 +845,7 @@ ui <- fluidPage(
                                wellPanel(
                                  # show the user input
                                  tabsetPanel(id = "tabs",
-                                             tabPanel("PDB",
-                                                      textInput("pdb_txt","Enter the pdb ID","7c2l")
-                                                      
-                                             ),
+                                             
                                              tabPanel("Features",
                                                       selectInput("species","Species:",choices=c("All",unique(vcab$Species)))%>%
                                                         helper(type="inline",title="Species",
@@ -835,6 +877,10 @@ ui <- fluidPage(
                                                                content=c("This is used to acquire structures with resolution below the threshold.",
                                                                          "The threshold can be set to value from 1 to 5.")) 
                                                       # Just empty the input to allow the user to select ab without the limit of resolution.
+                                                      
+                                             ),
+                                             tabPanel("PDB",
+                                                      textInput("pdb_txt","Enter the pdb ID","7c2l")
                                                       
                                              ),
                                              
@@ -936,23 +982,7 @@ ui <- fluidPage(
                                                                "(items indicated in quotation marks will be changed as the mouse moves.)"
                                                      )),
                                             NGLVieweROutput("structure"),
-                                            div(img(
-                                              src="./struc_viewer_legend.png",
-                                              width = 560#, height = 80
-                                            )),
-                                            checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
-                                            conditionalPanel(
-                                              condition="input.if_full_view==1",
-                                              checkboxGroupInput("full_view_option","Display options:",
-                                                                 c("Color antigen chain in this pdb"="color_antigen",
-                                                                   "Show other ligand(s) in this pdb"="show_ligand",
-                                                                   "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"))
-                                              
-                                              
-                                              
-                                              #)
-                                            ),
-                                            downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
+                                            uiOutput("viewer_legend")
                                             
                                    ),
                                    tabPanel("Sequence Coverage",
@@ -968,13 +998,13 @@ ui <- fluidPage(
                                             uiOutput("hover_info"),
                                             downloadButton("download_num_seq",label="Download displayed numbered sequence")
                                             
-                                            ),
-                                   tabPanel("CH1-CL interface matrix",
-                                            plotOutput("int_matrix_plot",width="580px",height="450px",
-                                                       hover=hoverOpts("matrix_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
-                                            uiOutput("matrix_hover_info"),
-                                            downloadButton("download_matrix",label="Download interface matrix")
-                                            )
+                                            )#,
+                                   #tabPanel("CH1-CL interface matrix",
+                                   #         plotOutput("int_matrix_plot",width="580px",height="450px",
+                                   #                    hover=hoverOpts("matrix_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
+                                   #         uiOutput("matrix_hover_info"),
+                                   #         downloadButton("download_matrix",label="Download interface matrix")
+                                   #         )
                                  )
                                  
                                  
@@ -1066,7 +1096,20 @@ ui <- fluidPage(
                         column(5,
                                wellPanel(
                                  tabsetPanel(id="residue_list_panel",
-                                             tabPanel("CH1-CL interface residues",
+                                             tabPanel("Fab H-L contact map",
+                                                      uiOutput("matrix_hover_info"),
+                                                      br(),
+                                                      uiOutput("interface_matrix_buttons"),
+                                                      plotOutput("int_matrix_plot",width="580px",height="450px",
+                                                                 hover=hoverOpts("matrix_hover",delay=100,delayType="debounce"),
+                                                                 brush = brushOpts(
+                                                                   id = "matrix_brush",
+                                                                   resetOnNew = FALSE
+                                                                 )
+                                                      )
+                                                      
+                                                      ),
+                                             tabPanel("H-L interface residues",
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       textOutput("pops_message") %>%
                                                         helper(type="inline",title="CH1-CL interface residues",
@@ -1117,11 +1160,13 @@ ui <- fluidPage(
              ),
              tabPanel("Download",
                       ## Allow the user to download the entire database
+                      h5("Download all the entris in VCAb here:"),
                       downloadButton("download",label="Download all entries in VCAb"),
-                      br(),
+                      br(),br(),br(),
+                      h5("Download the all the numbered sequences in VCAb here:"),
                       downloadButton("download_all_num_seqs",label="Download all the numbered sequences in VCAb"),
                       #downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
-                      br(),br(),br(),br(),br(),br()
+                      br(),br(),br()
                       
              ),
              tabPanel("About",
@@ -1132,7 +1177,7 @@ ui <- fluidPage(
                       h5(),
                       h5("If you have used VCAb in your work, please cite: "),
                       br(),
-                      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
+                      h5("Dongjun Guo, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
                       br(),
                       div(img(src="./Fig2_VCAb_db.png",
                               width = 1080#, height = 80
@@ -1481,7 +1526,9 @@ server <- function(input,output,session){
   
   
   
-  ### THE PANEL of POPSComp table ##################################################################################################
+  ### THE PANEL of Interface information POPSComp table ##################################################################################################
+  
+  ###### TABPANEL: POPSCOMP table ######
   
   struc_selected <- eventReactive(input$ab_info_table_rows_selected, {
     # return the "id" of the structure selected by the user in the following format: H(type)L(type)_pdb_HL
@@ -1584,84 +1631,160 @@ server <- function(input,output,session){
     disulfide_proxy %>% selectRows(NULL)
   })
   
+  ###### TABPANEL: Show Fab contact matrix ######
+  if_hide_non_interface <- reactive({ifelse(is.null(input$hide_non_interface),0,input$hide_non_interface)})
+  
+  # Store the brushed residue information into reactive values
+  brushed_all_residues <- reactiveValues(all=NULL)
+  brushed_int_residues <- reactiveValues(h=NULL,y=NULL)
+  # Clear the brushed area when the user click the button
+  observeEvent(input$clearBrush, {
+    session$resetBrush("matrix_brush")
+  })
+  
+  observe({
+    iden_code<- struc_selected()
+    if(if_hide_non_interface()==1){
+      int_matrix_plot0<-plot_interface_mtrix(iden_code,mtrix_dir,res_info_dir,"if_both_interface")
+    }
+    else {
+      int_matrix_plot0<-plot_interface_mtrix(iden_code,mtrix_dir,res_info_dir,NULL)
+    }
+    
+    output$int_matrix_plot <- renderPlot({
+      int_matrix_plot0
+    })
+    plotData <- int_matrix_plot0$data
+    # set the interactive "box" on the plot
+    output$matrix_hover_info <- renderUI({
+      hover <- input$matrix_hover
+      #plotData <- int_matrix_plot0$data
+      point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
+      if (nrow(point) == 0) return(fluidRow(style="height:70px",column(12,p(HTML("<b>Hover to show residue numbering information </b><br/><br/>")))))
+      if (if_hide_non_interface()==1&&(point$if_both_interface==0)) return(fluidRow(style="height:70px",column(12,p(HTML("<b>Hover to show residue numbering information </b><br/><br/>")))))
+      
+      interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid),res_info_dir)
+      h_res=interface_residues$hres
+      l_res=interface_residues$lres
+      
+      
+      fluidRow(
+        style="height:70px",
+        column(6,
+               p(HTML(paste0("<b> H residue: </b>", h_res, "<br/>",
+                             "<b> IMGT numbering: </b>", as.character(point$hid), "<br/>",
+                             "<b> If both residues are involved in interface: </b>", ifelse(point$if_both_interface==1,"Yes","No"), "<br/>"
+               )))
+        ),
+        column(6,
+               p(HTML(paste0(
+                 "<b> L residue: </b>", l_res, "<br/>",
+                 "<b> IMGT numbering: </b>", as.character(point$lid), "<br/>",
+                 "<b> C-alpha's distance (Å): </b>", point$value, "<br/>")))
+        )
+        
+        
+      )
+      
+    })
+    
+    # Get the strings indicating the PDB positions of brushed residues
+    brush <- input$matrix_brush
+    
+    if (is.null(brush)){
+      brushed_all_residues$all <- NULL
+      
+      brushed_int_residues$h <- NULL
+      brushed_int_residues$l <- NULL
+    }
+    else{
+      b_point <- brushedPoints(plotData,brush, xvar="hid",yvar="lid")
+      brushed_residues <- apply(b_point, MARGIN = 1, 
+                                function(x){
+                                  result=get_res_info_in_matrix(iden_code,as.character(x[1]),as.character(x[2]),res_info_dir)
+                                  result$hid=x[1][[1]]
+                                  result$lid=x[2][[1]]
+                                  result$value=x[3][[1]]
+                                  result$if_h_interface=x[4][[1]]
+                                  result$if_l_interface=x[5][[1]]
+                                  result$if_both_interface=x[6][[1]]
+                                  result
+                                })
+      
+      brushed_residues_df=as.data.frame(do.call(rbind,brushed_residues))
+      brushed_residues_df=brushed_residues_df[!(brushed_residues_df$hpdb=="NULL" | brushed_residues_df$lpdb=="NULL"),]
+      rownames(brushed_residues_df)<-NULL
+      
+      hlid=strsplit(iden_code,"_")[[1]][2]
+      hchain=substr(hlid,1,1)
+      lchain=substr(hlid,2,2)
+      
+      brushed_interface_residue=brushed_residues_df[brushed_residues_df$if_both_interface==1,]
+      
+      h_position_str_vec <- paste0 (brushed_residues_df$hpdb, ":", hchain)
+      h_p_str <- paste(h_position_str_vec,collapse=' or ')
+      h_p_str <- ifelse(substr(h_p_str,1,1)==":",NULL,h_p_str)
+      
+      l_position_str_vec <- paste0 (brushed_residues_df$lpdb, ":", lchain)
+      l_p_str <- paste(l_position_str_vec,collapse=' or ')
+      l_p_str <- ifelse(substr(l_p_str,1,1)==":",NULL,l_p_str)
+      
+      total_str <-paste(c(h_p_str,l_p_str),collapse=' or ')
+      
+      h_int_position_str_vec <- paste0 (brushed_interface_residue$hpdb, ":", hchain)
+      h_int_p_str <- paste(h_int_position_str_vec,collapse=' or ')
+      
+      l_int_position_str_vec <- paste0 (brushed_interface_residue$lpdb, ":", lchain)
+      l_int_p_str <- paste(l_int_position_str_vec,collapse=' or ')
+      
+      brushed_all_residues$all <- total_str
+      brushed_int_residues$h <- ifelse(substr(h_int_p_str,1,1)==":",NULL,h_int_p_str)
+      brushed_int_residues$l <- ifelse(substr(l_int_p_str,1,1)==":",NULL,l_int_p_str)
+  
+    }
+  })
+  
+  
+  
   
   ### THE PANEL of 3D Structural viewer ##################################################################################################
+  # Show the legend & download buttons after clicking the row in the table
+  observeEvent(input$ab_info_table_rows_selected, {
+    
+    output$viewer_legend <- renderUI({
+      tagList(
+        div(img(
+          src="./struc_viewer_legend.png",
+          width = 560#, height = 80
+        )),
+        checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
+        conditionalPanel(
+          condition="input.if_full_view==1",
+          checkboxGroupInput("full_view_option","Display options:",
+                             c("Color antigen chain in this pdb"="color_antigen",
+                               "Show other ligand(s) in this pdb"="show_ligand",
+                               "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"))
+        
+        ),
+        downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
+      )
+    })
+    
+    output$interface_matrix_buttons<-renderUI({
+      tagList(
+        checkboxInput(inputId = "hide_non_interface",label="Hide non-interface residues",FALSE),
+        actionButton("clearBrush", "Clear brushed area"),
+        downloadButton("download_matrix",label="Download interface matrix")
+      )
+    })
+    
+  })
+  
   ###### TABPANEL:Draw the seq_pos figure ######
   output$seq_cov_plot<- renderPlot({
     pdb_c <- struc_selected()
     get_coverage_pos_plot (pdb_c,"Htype",total_dom_info,t_h_author_bl,t_h_coor_bl,df=vcab)
   })
-  
-  ###### TABPANEL: show the interface matrix ######
-  
-  int_matrix_plot0<- reactive({
-    iden_code <- struc_selected()
-    plot_interface_mtrix(iden_code,mtrix_dir)
-  })
-  
-  output$int_matrix_plot<- renderPlot({
-    int_matrix_plot0()
-  })
-  
-  # set the interactive "box" on the plot
-  output$matrix_hover_info <- renderUI({
-    hover <- input$matrix_hover
-    plotData <- int_matrix_plot0()$data
-    point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
-    if (nrow(point) == 0) return(NULL)
-    if (is.na(point$value)) return(NULL)
-    
-    iden_code<- struc_selected()
-    interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid))
-    ch_res=interface_residues$hres
-    cl_res=interface_residues$lres
-    
-    
-    
-    # calculate point position INSIDE the image as percent of total dimensions
-    # from left (horizontal) and from top (vertical)
-    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
-    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
-    
-    left_pct <- ifelse(left_pct>0.7,0.7,left_pct)
-    top_pct <- ifelse(top_pct<0.4,0.4,top_pct)
-    
-    # calculate distance from left and bottom side of the picture in pixels
-    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
-    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
-    
-    # create style property fot tooltip
-    # background color is set so tooltip is a bit transparent
-    # z-index is set so we are sure are tooltip will be on top
-    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
-                    "left:", left_px+1, "px; top:", top_px+1, "px;")
-    
-    
-    
-    wellPanel(
-      style = style,
-      
-      p(HTML(paste0("<b> CH1 residue: </b>", ch_res, "<br/>",
-                    "<b> CH1 numbering: </b>", as.character(point$hid), "<br/>",
-                    "<b> CL residue: </b>", cl_res, "<br/>",
-                    "<b> CL numbering: </b>", as.character(point$lid), "<br/>",
-                    "<b> Distance: </b>", point$value, "<br/>")))
-    )
-  })
-  
-  # Make the PDB file downloadable for users
-  output$download_matrix <- downloadHandler(
-    filename = function(){
-      iden_code <- struc_selected()
-      paste0(iden_code,"_CH1-CL_interface_matrix.txt")
-    },
-    content=function(file){
-      #file.copy(pdb_dir_val$dir,file)
-      iden_code <- struc_selected()
-      dir=paste0(mtrix_dir,iden_code,"_interface_dist_mtrx.txt")
-      file.copy(dir,file)
-    }
-  )
   
   ###### TABPANEL:Show antibody numbering information ######
   num_id <- reactive({
@@ -1770,9 +1893,10 @@ server <- function(input,output,session){
   which_pdb_dir <- reactive({
     pdb_c <- struc_selected()
     pdbid <- strsplit(pdb_c,"_")[[1]][1]
-    
-    if (input$if_full_view==1){
-      return (paste0(f_pdb_dir,pdbid,".pdb"))
+    if_full_view<-ifelse(is.null(input$if_full_view),0,input$if_full_view)
+
+    if (if_full_view==1){
+      return (paste0(f_pdb_dir,pdbid,".cif"))
     }
     else{
       return (paste(pdb_parent_dir,pdb_c,".pdb",sep=''))
@@ -1784,7 +1908,7 @@ server <- function(input,output,session){
     #pdb_dir_val$pdb <- pdbid
     pdb_dir_val$iden_code <- type_pdb_c
     
-    #pdb_dir_val$dir <- which_pdb_dir()
+    #pdb_dir_val$mess <- which_pdb_dir()
     pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
   })
   
@@ -1854,22 +1978,22 @@ server <- function(input,output,session){
     #paste(select_residues_to_be_labeled(input$h_pops_rows_selected,pops_info$h_df)," or ",select_residues_to_be_labeled(input$l_pops_rows_selected,pops_info$l_df))
     
     # Include the selected disulfide bonds
-    sele_disulfide_row_idx <- as.numeric(input$disulfide_info_rows_selected)
-    disulfide_table<- disulfide$df
-    sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
-    disulfide_pos_vec=c()
-    for (pair in sele_disulfide){
-      residues=strsplit(pair,"-")[[1]]
-      for (r in residues){
-        remove_res_name=substring(r,4)
-        str1=gsub("\\(",":",remove_res_name)
-        res_num_chain=gsub("\\)","",str1)
-        disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
-      }
-    }
+    #sele_disulfide_row_idx <- as.numeric(input$disulfide_info_rows_selected)
+    #disulfide_table<- disulfide$df
+    #sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
+    #disulfide_pos_vec=c()
+    #for (pair in sele_disulfide){
+    #  residues=strsplit(pair,"-")[[1]]
+    #  for (r in residues){
+    #    remove_res_name=substring(r,4)
+    #    str1=gsub("\\(",":",remove_res_name)
+    #    res_num_chain=gsub("\\)","",str1)
+    #    disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
+    #  }
+    #}
     
-    disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
-    total_pos_str <- paste0(position_str," or ",disulfide_pos_str)
+    #disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
+    #total_pos_str <- paste0(position_str," or ",disulfide_pos_str)
     #return (total_pos_str)
     return (position_str)
   })
@@ -1923,8 +2047,8 @@ server <- function(input,output,session){
     }
     else{
       HL <- strsplit(pdb_c,"")[[1]]
-      antigen_chain_vec=strsplit(antigen_info," \\| ")[[1]]
-      antigen_chain_vec <- antigen_chain_vec[!antigen_chain_vec %in% HL] #The antigen annotation fetched from SAbDab is not always correct. In some cases, the H/L chain ID is in this column
+      antigen_chain_vec=strsplit(antigen_info,";")
+      #antigen_chain_vec <- antigen_chain_vec[!antigen_chain_vec %in% HL]
       str1=unlist(lapply(antigen_chain_vec,function(x){paste0(":",x)}))
       
       return (paste(str1,collapse=" or "))
@@ -1960,7 +2084,7 @@ server <- function(input,output,session){
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="red",sele=HC_color_select())) %>% #set the HC region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
-                                                  "element",colorValue="blue",sele=LC_color_select())) %>% #set the LC region blue
+                                                  "element",colorValue="royalblue",sele=LC_color_select())) %>% #set the LC region blue
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="salmon",sele=HV_color_select())) %>% #set the HV region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
@@ -1968,13 +2092,16 @@ server <- function(input,output,session){
       #addRepresentation("ball+stick", param = list(name = "ball+stick", colorScheme =
       #                                            "element",colorValue="cornflowerblue",sele="hetero")) %>% #show the heteroatoms
       # Conditional pipe:
-      
       `if`(h_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = h_res_select())),.) %>%
       `if`(l_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = l_res_select())),.) %>%
       `if`(disulfide_select()!="", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "orange",sele = disulfide_select())),.) %>%
+      `if`(!(is.null(brushed_int_residues$h)), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = brushed_int_residues$h)),.) %>%
+      `if`(!(is.null(brushed_int_residues$l)), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = brushed_int_residues$l)),.) %>%
       
-      `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(!(is.null(brushed_int_residues$h)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$h,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(!(is.null(brushed_int_residues$l)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$l,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       
       `if`(multi_condition("color_antigen" %in% full_view_option_value(),antigen_color_select()!=""),addRepresentation(., "cartoon", param = list(name = "cartoon", colorScheme ="element",colorValue="black",sele=antigen_color_select())),.) %>%
       `if`("show_ligand" %in% full_view_option_value(), addRepresentation(., "ball+stick", param = list(name = "ball+stick", colorScheme ="element",colorValue="cyan",sele="ligand")),.) %>%
@@ -1982,13 +2109,15 @@ server <- function(input,output,session){
       `if`("zoom_in_to_HL" %in% full_view_option_value(), zoomMove(.,center=HL_chain_selection(),zoom=HL_chain_selection()),.) %>%
       `if`(multi_condition(zoom_in_sele_res_val()==1,res_select()!=":"), zoomMove(.,center=res_select(),zoom=res_select()),.) %>%
       `if`(multi_condition(zoom_in_sele_disulfide_val()==1,disulfide_select()!=""), zoomMove(.,center=disulfide_select(),zoom=disulfide_select()),.) %>%
+      `if`(!(is.null(brushed_all_residues$all)), zoomMove(.,center=brushed_all_residues$all,zoom=brushed_all_residues$all),.) %>%
+      `if`(!(is.null(brushed_all_residues$all)), addRepresentation(., "cartoon", param = list(colorScheme = "element",colorValue = "grey",sele = paste("not(",brushed_all_residues$all,")"))),.) %>%
       
       
       
       
       
       
-      stageParameters(backgroundColor = "grey") %>%
+      stageParameters(backgroundColor = "lightgray") %>%
       #setSize('20','20') %>%
       setQuality("high") %>%
       setFocus(0) 
