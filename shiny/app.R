@@ -505,44 +505,34 @@ get_similar_interface <- function(iden_code,dm_df){
 
 ## Functions to display antibody numbering
 
-extracting_num_df <- function(id_code,total_num_df){
+extracting_num_df <- function(iden_code,res_info_dir){
   # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
   
-  num_df <- total_num_df[total_num_df["Id"]==id_code,14:ncol(total_num_df)]
-  colnames(num_df)<-sub("X","",colnames(num_df))
+  hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
   
-  # Filter out columns with the value "deleted" 
-  num_df <-num_df[,unlist(lapply(num_df,function(x){!("deleted" %in% x)}))]
-  rownames(num_df) <- "residues"
-  num_df["numbering",] <- colnames(num_df)
+  h_number <- as.numeric(regmatches(hnum$imgt_numbering, gregexpr("[[:digit:]]+", hnum$imgt_numbering)))
+  h_insertion_code <- regmatches(hnum$imgt_numbering, gregexpr("[[:alpha:]]+", hnum$imgt_numbering))
+  hnum[,"number"]<- h_number
+  hnum[,"insertion"] <- unlist(lapply(h_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
   
-  number <- as.numeric(regmatches(colnames(num_df), gregexpr("[[:digit:]]+", colnames(num_df))))
-  insertion_code <- regmatches(colnames(num_df), gregexpr("[[:alpha:]]+", colnames(num_df)))
-  num_df["number",]<- number
-  num_df["insertion",] <- num_df["insertion",] <- lapply(insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x)
-  colnames(num_df) <- NULL
-  return (num_df)
+  l_number <- as.numeric(regmatches(lnum$imgt_numbering, gregexpr("[[:digit:]]+", lnum$imgt_numbering)))
+  l_insertion_code <- regmatches(lnum$imgt_numbering, gregexpr("[[:alpha:]]+", lnum$imgt_numbering))
+  lnum[,"number"]<- l_number
+  lnum[,"insertion"] <- unlist(lapply(l_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
+  
+  return (list("hnum"=hnum,"lnum"=lnum))
 }
 
-generating_vc_num_info <- function(id_code,tvnum,tcnum){
-  # Generating the dataframe containing both V and C region
-  # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
+generating_vc_num_info <- function(vcnum){
+  # Generating the dataframe containing the information of the name of fragments
+  # vcnum is the result generated from extracting_num_df, which has the information of both V and C numbering information
+  vcnum[,"region"]<-NA
   
-  vnum <- extracting_num_df(id_code,tvnum)
-  vnum["VC",]<-rep(c("V"),ncol(vnum))
-  cnum <- extracting_num_df(id_code,tcnum)
-  cnum["VC",]<-rep(c("C"),ncol(cnum))
-  
-  vnum <- t(vnum)
-  cnum <- t(cnum)
-  vcnum <- rbind(vnum,cnum)
-  vcnum <- as.data.frame(vcnum)
-  
-  vcnum["region"]<-NA
   
   # Assign regions column (FR1,CDR,A-strand,etc)
   for (i in 1:nrow(vcnum)){
-    vc <- vcnum[i,"VC"]
+    vc <- vcnum[i,"VorC"]
     num <- as.numeric(vcnum[i,"number"])
     ins <- vcnum[i,"insertion"]
     if (vc=="V"){
@@ -648,6 +638,8 @@ generating_vc_num_info <- function(id_code,tvnum,tcnum){
     }
   }
   
+  
+  
   ## Assign x, y positions
   assign_x_and_y <- function(regions,y_value){
     s_num <- list()
@@ -655,8 +647,8 @@ generating_vc_num_info <- function(id_code,tvnum,tcnum){
       ss_num <- vcnum[vcnum["region"]==r,]
       if (nrow(ss_num)>=1){
         rownames(ss_num) <- NULL
-        vc <- ss_num[1,"VC"]
-        ss_num[nrow(ss_num) + 1,] = c(NA_character_,NA_character_,NA_character_,NA_character_,vc,r)
+        vc <- ss_num[1,"VorC"]
+        ss_num[nrow(ss_num) + 1,] = c(vc,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,r)
       }
       s_num <- append(s_num,list(ss_num))
     }
@@ -687,7 +679,7 @@ get_numbering_plot <- function(num_df){
   region_pos["start"] <- NA
   region_pos["end"] <- NA
   region_pos["y"] <- NA
-  region_pos["VC"] <- NA
+  region_pos["VorC"] <- NA
   
   for (i in 1:nrow(region_pos)){
     region_name=region_pos[i,"region"]
@@ -696,7 +688,7 @@ get_numbering_plot <- function(num_df){
     region_pos[i,"start"] <- min(snum_df[,"x"])
     region_pos[i,"end"] <- max(snum_df[,"x"])
     region_pos[i,"y"] <- snum_df[1,"y"]
-    region_pos[i,"VC"] <- snum_df[1,"VC"]
+    region_pos[i,"VorC"] <- snum_df[1,"VorC"]
   }
   #region_pos$y <- factor(region_pos$y,
   #                       levels=c(1,2,3,4,5,6,7,8,9))
@@ -716,23 +708,23 @@ get_numbering_plot <- function(num_df){
     ) +
     # Add region labels
     geom_text(data=region_pos,aes(label=region),x=(region_pos[,"start"]+region_pos[,"end"])/2,vjust=-1.5,fontface='bold',size=5)+
-    geom_tile(data=num_df[!is.na(num_df$residues), ],aes_string(x="x",y="y",fill="VC"), alpha=0.5,height = 0.5)+ # add background
+    geom_tile(data=num_df[!is.na(num_df$residue), ],aes_string(x="x",y="y",fill="VorC"), alpha=0.5,height = 0.5)+ # add background
     scale_fill_manual(values=c("V"=alpha("deepskyblue3", .5),"C"=alpha("darkorange", .5)),guide = "none")+
-    geom_text(data=num_df,aes_string(x="x",y="y",label="residues"),hjust=0,nudge_x=-0.5) # add sequence residues
+    geom_text(data=num_df,aes_string(x="x",y="y",label="res_code"),hjust=0,nudge_x=-0.5) # add sequence residues
     
   return (g)
   
 }
 
 extract_seq_from_num_df <- function(df,Id_code){
-  df <- df[,c("VC","region","residues","numbering")]
+  df <- df[,c("VorC","region","residue","imgt_numbering")]
   df <- df[complete.cases(df),]
   
-  vnum <- df[df["VC"]=="V",]
-  cnum <- df[df["VC"]=="C",]
+  vnum <- df[df["VorC"]=="V",]
+  cnum <- df[df["VorC"]=="C",]
   
-  vseq <- paste0(vnum$residues,collapse="")
-  cseq <- paste0(cnum$residues,collapse="")
+  vseq <- paste0(vnum$residue,collapse="")
+  cseq <- paste0(cnum$residue,collapse="")
   
   v_title <- paste0(Id_code,"_v_seq")
   c_title <- paste0(Id_code,"_c_seq")
@@ -1801,12 +1793,11 @@ server <- function(input,output,session){
   
   
   num_df <- reactive({
-    v_num=if (input$num_chain_tabs=="Heavy") vh_num else vl_num 
-    c_num=if (input$num_chain_tabs=="Heavy") ch_num else cl_num 
+    iden_code <-struc_selected()
+    hlnum <- extracting_num_df(iden_code,res_info_dir)
+    chain_num_df=if (input$num_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum
     
-    Id=num_id()
-
-    num_df <-generating_vc_num_info(Id,v_num,c_num)
+    num_df <-generating_vc_num_info(chain_num_df)
     
   })
   
@@ -1822,7 +1813,7 @@ server <- function(input,output,session){
     hover <- input$numbering_hover
     num_df <- num_df()
     
-    plotData <- num_df[,c("x","y","VC","region","residues","numbering")]
+    plotData <- num_df[,c("x","y","VorC","region","residue","imgt_numbering")]
     plotData <- plotData[complete.cases(plotData),]
     point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
     if (nrow(point) == 0) return(NULL)
@@ -1852,9 +1843,9 @@ server <- function(input,output,session){
     
     wellPanel(
       style = style,
-      p(HTML(paste0("<b> V/C region: ", point[["VC"]], "</b><br/>",
-                    "<b> Residue: </b>", point$residues, "<br/>",
-                    "<b> Numbering: </b>", point$numbering, "<br/>",
+      p(HTML(paste0("<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                    "<b> Residue: </b>", point$residue, "<br/>",
+                    "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
                     "<b> Fragment: </b>", point$region, "<br/>")))
     )
   })
