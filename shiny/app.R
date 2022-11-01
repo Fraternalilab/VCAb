@@ -7,6 +7,7 @@ library (tibble)
 library (shinyhelper)
 library (ggplot2)
 library(seqinr)
+library(shinyBS)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/final_vcab.csv"
@@ -833,264 +834,200 @@ ui <- fluidPage(
   navbarPage("",
              tabPanel("Search",
                       fluidRow(
-                        column(7,
-                               wellPanel(
-                                 # show the user input
-                                 tabsetPanel(id = "tabs",
-                                             
-                                             tabPanel("Features",
-                                                      selectInput("species","Species:",choices=c("All",unique(vcab$Species)))%>%
-                                                        helper(type="inline",title="Species",
-                                                               content=c("Species annotation for the antibody.")),
-                                                      selectInput("iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
-                                                        helper(type="inline",title="Isotype", 
-                                                               content=c("Isotypes are classified by the sequence of C region on H chain.",
-                                                                         "Each isotype has different function.")),
-                                                      
-                                                      selectInput("Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
-                                                        helper(type="inline",title="Light chain type", 
-                                                               content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                                      selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                                        helper(type="inline", title="Structural Coverage",
-                                                               content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                                         "Full antibody covers both Fab and Fc region")),
-                                                      selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                                        helper(type="inline",title="If has antigen",
-                                                               content=c("If the pdb file of this entry containing the antigen chain",
-                                                                         "Any: include the antibody in the results no matter if it has antigen or not",
-                                                                         "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                                         "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                                      
-                                                      selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                                        helper(type="inline",title="Experimental Method",
-                                                               content=c("The experimental method used to acquire the structure.")),
-                                                      numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                                        helper(type="inline",title="Resolution Threshold",
-                                                               content=c("This is used to acquire structures with resolution below the threshold.",
-                                                                         "The threshold can be set to value from 1 to 5.")) 
-                                                      # Just empty the input to allow the user to select ab without the limit of resolution.
-                                                      
-                                             ),
-                                             tabPanel("PDB",
-                                                      textInput("pdb_txt","Enter the pdb ID","7c2l")
-                                                      
-                                             ),
-                                             
-                                             tabPanel("Sequence",
-                                                      tabsetPanel(id="seq_tabs",
-                                                                  tabPanel("Search individual sequence",
-                                                                           textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                         value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
-                                                                           
-                                                                           # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                           radioButtons(inputId="seq_type", label="The type of this chain:", 
-                                                                                        choices=c("Heavy Chain" = "Hseq",
-                                                                                                  "Light Chain" = "Lseq",
-                                                                                                  "Don't know" = "unknown_seq")),
-                                                                           checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
-                                                                             helper(type="inline",title="Add the other paired H/L chain",
-                                                                                    content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
-                                                                                              "",
-                                                                                              "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                              "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain.")),
-                                                                           
-                                                                           conditionalPanel(
-                                                                             condition="input.two_chains==1",
-                                                                             textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                           value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
-                                                                             
-                                                                             # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                             radioButtons(inputId="seq_type_2", label="The type of this chain:", 
-                                                                                          choices=c("Heavy Chain" = "Hseq",
-                                                                                                    "Light Chain" = "Lseq"))
-                                                                           )
-                                                                           
-                                                                           
-                                                                  ),
-                                                                  tabPanel("Search in batch",
-                                                                           fileInput("upload","Upload a fasta file (200 seqs max)"),
-                                                                           radioButtons(inputId="up_paired", label=" Sequences inside the uploaded file are: ",
-                                                                                        choices=c(
-                                                                                          "paired H and L chains" = "paired",
-                                                                                          "not-paired chains" = "unpaired"
-                                                                                        )) %>%
-                                                                             helper(type="inline",title="What is paired H & L chain?",
-                                                                                    content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
-                                                                                              "",
-                                                                                              "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
-                                                                                              "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
-                                                                                              "AntibodyName and HorL are connected by a hyphen.",
-                                                                                              "",
-                                                                                              "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                              "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table."))
-                                                                           
-                                                                  )),
-                                                      
-                                                      # horizontal line
-                                                      tags$hr(), 
-                                                      radioButtons(inputId="sele_bl_db", label="Select the region of your interest:",
-                                                                   choices=c("V region"="v_region",
-                                                                             "Full sequence (V & C)"="full_seq")) %>%
-                                                        helper(type="inline",title="Selection of the database to BLAST against",
-                                                               content = c("This selection would determine the database to be BLAST against.",
-                                                                           "",
-                                                                           "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
-                                                                           "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
-                                             ),
-                                             tabPanel("CH1-CL Interface",
-                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
-                                                      br(),br(),
-                                                      selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
-                                                                     options=list(maxOptions =5,
-                                                                                  placeholder = 'Please type iden_code here',
-                                                                                  onInitialize = I('function() { this.setValue(""); }'))) %>%
-                                                        #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
-                                                        helper(type="inline",title="iden_code", 
-                                                               content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
-                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
-                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
-                                                                         "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
-                                                               ))
-                                                      #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
-                                                      
-                                             )
-                                             
-                                 )
-                                 
-                               )
-                        ),
+                        bsCollapse(id="collapse_panels",open="Query for antibody structures",
+                                   bsCollapsePanel("Query for antibody structures",
+                                                   tabsetPanel(id = "tabs",
+                                                               tabPanel("PDB",
+                                                                        textInput("pdb_txt","Enter the pdb ID","7c2l")
+                                                                        
+                                                               ),
+                                                               tabPanel("Features",
+                                                                        selectInput("species","Species:",choices=c("All",unique(vcab$Species)))%>%
+                                                                          helper(type="inline",title="Species",
+                                                                                 content=c("Species annotation for the antibody.")),
+                                                                        selectInput("iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
+                                                                          helper(type="inline",title="Isotype", 
+                                                                                 content=c("Isotypes are classified by the sequence of C region on H chain.",
+                                                                                           "Each isotype has different function.")),
+                                                                        
+                                                                        selectInput("Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
+                                                                          helper(type="inline",title="Light chain type", 
+                                                                                 content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                                                                        selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                                                                          helper(type="inline", title="Structural Coverage",
+                                                                                 content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                                                           "Full antibody covers both Fab and Fc region")),
+                                                                        selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                                                          helper(type="inline",title="If has antigen",
+                                                                                 content=c("If the pdb file of this entry containing the antigen chain",
+                                                                                           "Any: include the antibody in the results no matter if it has antigen or not",
+                                                                                           "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                                                           "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                                                                        
+                                                                        selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                                                          helper(type="inline",title="Experimental Method",
+                                                                                 content=c("The experimental method used to acquire the structure.")),
+                                                                        numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                                                          helper(type="inline",title="Resolution Threshold",
+                                                                                 content=c("This is used to acquire structures with resolution below the threshold.",
+                                                                                           "The threshold can be set to value from 1 to 5.")) 
+                                                                        # Just empty the input to allow the user to select ab without the limit of resolution.
+                                                                        
+                                                               ),
+                                                               
+                                                               
+                                                               tabPanel("Sequence",
+                                                                        tabsetPanel(id="seq_tabs",
+                                                                                    tabPanel("Search individual sequence",
+                                                                                             textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                           value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
+                                                                                             
+                                                                                             # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                             radioButtons(inputId="seq_type", label="The type of this chain:", 
+                                                                                                          choices=c("Heavy Chain" = "Hseq",
+                                                                                                                    "Light Chain" = "Lseq",
+                                                                                                                    "Don't know" = "unknown_seq")),
+                                                                                             checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
+                                                                                               helper(type="inline",title="Add the other paired H/L chain",
+                                                                                                      content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
+                                                                                                                "",
+                                                                                                                "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain.")),
+                                                                                             
+                                                                                             conditionalPanel(
+                                                                                               condition="input.two_chains==1",
+                                                                                               textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                             value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
+                                                                                               
+                                                                                               # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                               radioButtons(inputId="seq_type_2", label="The type of this chain:", 
+                                                                                                            choices=c("Heavy Chain" = "Hseq",
+                                                                                                                      "Light Chain" = "Lseq"))
+                                                                                             )
+                                                                                             
+                                                                                             
+                                                                                    ),
+                                                                                    tabPanel("Search in batch",
+                                                                                             fileInput("upload","Upload a fasta file (200 seqs max)"),
+                                                                                             radioButtons(inputId="up_paired", label=" Sequences inside the uploaded file are: ",
+                                                                                                          choices=c(
+                                                                                                            "paired H and L chains" = "paired",
+                                                                                                            "not-paired chains" = "unpaired"
+                                                                                                          )) %>%
+                                                                                               helper(type="inline",title="What is paired H & L chain?",
+                                                                                                      content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
+                                                                                                                "",
+                                                                                                                "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
+                                                                                                                "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
+                                                                                                                "AntibodyName and HorL are connected by a hyphen.",
+                                                                                                                "",
+                                                                                                                "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table."))
+                                                                                             
+                                                                                    )),
+                                                                        
+                                                                        # horizontal line
+                                                                        tags$hr(), 
+                                                                        radioButtons(inputId="sele_bl_db", label="Select the region of your interest:",
+                                                                                     choices=c("V region"="v_region",
+                                                                                               "Full sequence (V & C)"="full_seq")) %>%
+                                                                          helper(type="inline",title="Selection of the database to BLAST against",
+                                                                                 content = c("This selection would determine the database to be BLAST against.",
+                                                                                             "",
+                                                                                             "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
+                                                                                             "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
+                                                               ),
+                                                               tabPanel("CH1-CL Interface",
+                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
+                                                                        br(),br(),
+                                                                        selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
+                                                                                       options=list(maxOptions =5,
+                                                                                                    placeholder = 'Please type iden_code here',
+                                                                                                    onInitialize = I('function() { this.setValue(""); }'))) %>%
+                                                                          #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
+                                                                          helper(type="inline",title="iden_code", 
+                                                                                 content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
+                                                                                           "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
+                                                                                           "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
+                                                                                           "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
+                                                                                 ))
+                                                                        #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
+                                                                        
+                                                               )
+                                                               
+                                                   ),
+                                                   
+                                                   actionButton("search","Search") 
+                                   )
+                                   )
                         
-                        column(5,
-                               wellPanel(
-                                 tabsetPanel(
-                                   tabPanel("Structural Viewer",
-                                            # show the structure viewer
-                                            textOutput("struc_selected_message") %>%
-                                              helper(type="inline",title="Structure viewer",
-                                                     content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
-                                                               "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
-                                                               "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
-                                                               "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
-                                                               "(items indicated in quotation marks will be changed as the mouse moves.)"
-                                                     )),
-                                            NGLVieweROutput("structure"),
-                                            #tags$head(
-                                            #  tags$style(HTML("input[name=if_full_view][value='0'] { display: none }"))
-                                            #),
-                                            uiOutput("viewer_legend")
-                                            
-                                   ),
-                                   tabPanel("Sequence Coverage",
-                                            plotOutput("seq_cov_plot")
-                                   ),
-                                   tabPanel("Sequence numbering",
-                                            radioButtons(inputId="num_chain_tabs", label="Choose the sequence to display:", 
-                                                         choices=c("Heavy chain sequence" = "Heavy",
-                                                                   "Light chain sequence" = "Light"
-                                                                   )),
-                                            plotOutput("numbering_plot",width="580px",height="450px",
-                                                       hover=hoverOpts("numbering_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
-                                            uiOutput("hover_info"),
-                                            downloadButton("download_num_seq",label="Download displayed numbered sequence")
-                                            
-                                            )#,
-                                   #tabPanel("CH1-CL interface matrix",
-                                   #         plotOutput("int_matrix_plot",width="580px",height="450px",
-                                   #                    hover=hoverOpts("matrix_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
-                                   #         uiOutput("matrix_hover_info"),
-                                   #         downloadButton("download_matrix",label="Download interface matrix")
-                                   #         )
-                                 )
-                                 
-                                 
-                               )
-                        )
+                        
                       ),
                       fluidRow(
+                        
                         column(7,
                                wellPanel(
-                                 # show the antibody information table
-                                 actionButton("search","Search"),
-                                 textOutput("chain_type_message"),
-                                 selectInput("file_col","Select the additional column(s) you want to display",
-                                             choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
-                                             multiple=TRUE)%>%
-                                   helper(type="inline",title="Display additional columns",
-                                          content=c("For simplicity, some columns of the antibody table below are hidden",
-                                                    "By selecting the column names listed here, you can acquire the information in these columns",
-                                                    "Multiple columns can be selected at the same time")),
-                                 fluidRow(
-                                   column(4,
-                                          downloadButton("download_subset",label="Download search results")
-                                   ),
-                                   column(8,
-                                          checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
-                                            helper(type="inline",title="Download search results",
-                                                   content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
-                                                             "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
-                                                             "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
-                                                   ))
-                                   )
-                                   
-                                 ),
-                                 
-                                 br(),
-                                 #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
-                                 conditionalPanel(#condition="input.filter_result==1",
-                                   condition="input.tabs==\"Sequence\" ",
-                                   # The following options are the same as the "Features" tab:
-                                   hr(),
-                                   
-                                   column(5,
-                                          strong ("Filter the results by features:"),
-                                          br(),br(),
-                                          selectInput("flt_species","Species:",choices=unique(vcab$Species)) %>%
-                                            helper(type="inline",title="Species",
-                                                   content=c("Species annotation for the antibody")),
-                                          selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
-                                            helper(type="inline",title="Isotype", 
-                                                   content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                             "Each isotype has different function.")),
-                                          
-                                          selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
-                                            helper(type="inline",title="Light chain type", 
-                                                   content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                          selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                            helper(type="inline", title="Structural Coverage",
-                                                   content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                             "Full antibody covers both Fab and Fc region"))
-                                   ),
-                                   column(5, offset=2,
-                                          
-                                          selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                            helper(type="inline",title="If has antigen",
-                                                   content=c("If the pdb file of this entry containing the antigen chain",
-                                                             "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
-                                                             "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                             "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                          selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                            helper(type="inline",title="Experimental Method",
-                                                   content=c("The experimental method used to acquire the structure.")),
-                                          numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                            helper(type="inline",title="Resolution Threshold",
-                                                   content=c("This is used to acquire structures with resolution below the threshold.",
-                                                             "The threshold can be set to value from 1 to 5.")) 
-                                          # Just empty the input to allow the user to select ab without the limit of resolution.
-                                   )#,
-                                   #actionButton("filter","Filter the Results")
-                                   
-                                 ),
-                                 
-                                 hr(),
-                                 DT::dataTableOutput("ab_info_table"),
-                                 textOutput("unpair_message"),
-                                 DT::dataTableOutput("unpaired_table")
-                                 
-                               )
-                        ),
-                        column(5,
-                               wellPanel(
                                  tabsetPanel(id="residue_list_panel",
+                                             tabPanel("Antibody information",
+                                                      # show the antibody information table
+                                                      
+                                                      textOutput("chain_type_message"),
+                                                      uiOutput("ab_info_buttons_ui"),
+                                                      
+                                                      br(),
+                                                      #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
+                                                      conditionalPanel(#condition="input.filter_result==1",
+                                                        condition="input.tabs==\"Sequence\" ",
+                                                        # The following options are the same as the "Features" tab:
+                                                        hr(),
+                                                        
+                                                        column(5,
+                                                               strong ("Filter the results by features:"),
+                                                               br(),br(),
+                                                               selectInput("flt_species","Species:",choices=unique(vcab$Species)) %>%
+                                                                 helper(type="inline",title="Species",
+                                                                        content=c("Species annotation for the antibody")),
+                                                               selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
+                                                                 helper(type="inline",title="Isotype", 
+                                                                        content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                                                                  "Each isotype has different function.")),
+                                                               
+                                                               selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
+                                                                 helper(type="inline",title="Light chain type", 
+                                                                        content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                                                               selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                                                                 helper(type="inline", title="Structural Coverage",
+                                                                        content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                                                  "Full antibody covers both Fab and Fc region"))
+                                                        ),
+                                                        column(5, offset=2,
+                                                               
+                                                               selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                                                 helper(type="inline",title="If has antigen",
+                                                                        content=c("If the pdb file of this entry containing the antigen chain",
+                                                                                  "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
+                                                                                  "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                                                  "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                                                               selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                                                 helper(type="inline",title="Experimental Method",
+                                                                        content=c("The experimental method used to acquire the structure.")),
+                                                               numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                                                 helper(type="inline",title="Resolution Threshold",
+                                                                        content=c("This is used to acquire structures with resolution below the threshold.",
+                                                                                  "The threshold can be set to value from 1 to 5.")) 
+                                                               # Just empty the input to allow the user to select ab without the limit of resolution.
+                                                        )#,
+                                                        #actionButton("filter","Filter the Results")
+                                                        
+                                                      ),
+                                                      
+                                                      hr(),
+                                                      DT::dataTableOutput("ab_info_table"),
+                                                      textOutput("unpair_message"),
+                                                      DT::dataTableOutput("unpaired_table")
+                                                      
+                                               
+                                             ),
                                              tabPanel("Fab H-L contact map",
                                                       uiOutput("matrix_hover_info"),
                                                       br(),
@@ -1132,6 +1069,45 @@ ui <- fluidPage(
                                              )
                                              
                                  )
+                               )
+                        ),
+                        column(5,
+                               wellPanel(
+                                 tabsetPanel(
+                                   tabPanel("Structural Viewer",
+                                            # show the structure viewer
+                                            textOutput("struc_selected_message") %>%
+                                              helper(type="inline",title="Structure viewer",
+                                                     content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
+                                                               "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
+                                                               "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
+                                                               "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
+                                                               "(items indicated in quotation marks will be changed as the mouse moves.)"
+                                                     )),
+                                            NGLVieweROutput("structure"),
+                                            #tags$head(
+                                            #  tags$style(HTML("input[name=if_full_view][value='0'] { display: none }"))
+                                            #),
+                                            uiOutput("viewer_legend")
+                                            
+                                   ),
+                                   tabPanel("Sequence Coverage",
+                                            plotOutput("seq_cov_plot")
+                                   ),
+                                   tabPanel("Sequence numbering",
+                                            radioButtons(inputId="num_chain_tabs", label="Choose the sequence to display:", 
+                                                         choices=c("Heavy chain sequence" = "Heavy",
+                                                                   "Light chain sequence" = "Light"
+                                                         )),
+                                            plotOutput("numbering_plot",width="580px",height="450px",
+                                                       hover=hoverOpts("numbering_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
+                                            uiOutput("hover_info"),
+                                            downloadButton("download_num_seq",label="Download displayed numbered sequence")
+                                            
+                                   )
+                                 )
+                                 
+                                 
                                )
                         )
                       )
@@ -1200,9 +1176,41 @@ server <- function(input,output,session){
   two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
   
+  
   observeEvent(input$search,{
     # Initialize everything:
     initialize_everything()
+    
+    # Update the tabset panel to the "Antibody information" when the user click on search:
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
+    
+    # Show the buttons and select_column options when the user click the search:
+    output$ab_info_buttons_ui <- renderUI({
+      tagList(
+        selectInput("file_col","Select the additional column(s) you want to display",
+                    choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
+                    multiple=TRUE)%>%
+          helper(type="inline",title="Display additional columns",
+                 content=c("For simplicity, some columns of the antibody table below are hidden",
+                           "By selecting the column names listed here, you can acquire the information in these columns",
+                           "Multiple columns can be selected at the same time")),
+        fluidRow(
+          column(4,
+                 downloadButton("download_subset",label="Download search results")
+          ),
+          column(8,
+                 checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
+                   helper(type="inline",title="Download search results",
+                          content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
+                                    "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
+                                    "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
+                          ))
+          )
+          
+        )
+      )
+    })
     # Do the actual job
     if (tabs_value() == "PDB"){
       if(input$pdb_txt %in% pdbs){
