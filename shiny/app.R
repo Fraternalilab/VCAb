@@ -717,14 +717,14 @@ get_numbering_plot <- function(num_df){
 }
 
 extract_seq_from_num_df <- function(df,Id_code){
-  df <- df[,c("VorC","region","residue","imgt_numbering")]
+  df <- df[,c("VorC","region","res_code","imgt_numbering")]
   df <- df[complete.cases(df),]
   
   vnum <- df[df["VorC"]=="V",]
   cnum <- df[df["VorC"]=="C",]
   
-  vseq <- paste0(vnum$residue,collapse="")
-  cseq <- paste0(cnum$residue,collapse="")
+  vseq <- paste0(vnum$res_code,collapse="")
+  cseq <- paste0(cnum$res_code,collapse="")
   
   v_title <- paste0(Id_code,"_v_seq")
   c_title <- paste0(Id_code,"_c_seq")
@@ -974,6 +974,9 @@ ui <- fluidPage(
                                                                "(items indicated in quotation marks will be changed as the mouse moves.)"
                                                      )),
                                             NGLVieweROutput("structure"),
+                                            #tags$head(
+                                            #  tags$style(HTML("input[name=if_full_view][value='0'] { display: none }"))
+                                            #),
                                             uiOutput("viewer_legend")
                                             
                                    ),
@@ -1658,20 +1661,22 @@ server <- function(input,output,session){
       interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid),res_info_dir)
       h_res=interface_residues$hres
       l_res=interface_residues$lres
+      h_pdb=interface_residues$hpdb
+      l_pdb=interface_residues$lpdb
       
       
       fluidRow(
         style="height:70px",
         column(6,
-               p(HTML(paste0("<b> H residue: </b>", h_res, "<br/>",
-                             "<b> IMGT numbering: </b>", as.character(point$hid), "<br/>",
+               p(HTML(paste0("<b> H residue: </b>", h_res," ",h_pdb, "<br/>",
+                             "<b> IMGT numbering (H): </b>", as.character(point$hid), "<br/>",
                              "<b> If both residues are involved in interface: </b>", ifelse(point$if_both_interface==1,"Yes","No"), "<br/>"
                )))
         ),
         column(6,
                p(HTML(paste0(
-                 "<b> L residue: </b>", l_res, "<br/>",
-                 "<b> IMGT numbering: </b>", as.character(point$lid), "<br/>",
+                 "<b> L residue: </b>", l_res," ",l_pdb, "<br/>",
+                 "<b> IMGT numbering (L): </b>", as.character(point$lid), "<br/>",
                  "<b> C-alpha's distance (Å): </b>", point$value, "<br/>")))
         )
         
@@ -1734,7 +1739,34 @@ server <- function(input,output,session){
       brushed_int_residues$l <- ifelse(substr(l_int_p_str,1,1)==":",NULL,l_int_p_str)
   
     }
+    output$download_matrix <- downloadHandler(
+      filename=function(){
+        paste0(iden_code,"Fab_contact_map_info",".zip")
+      },
+      content=function(f_name){
+        
+        temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+        dir.create(temp_directory)
+        
+        plot_df <- int_matrix_plot0$data
+        plot_df_name <- paste0(iden_code,"_matrix_with_residue_info.csv")
+        write.csv(plot_df,file.path(temp_directory,plot_df_name))
+        
+        matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+        matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+        file.copy(matrix_f_name,matrix_f_name_new)
+        
+        file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+        file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+        
+        zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+      },
+      contentType="application/zip"
+    )
+    
   })
+  
+  
   
   
   
@@ -1885,7 +1917,8 @@ server <- function(input,output,session){
     pdb_c <- struc_selected()
     pdbid <- strsplit(pdb_c,"_")[[1]][1]
     if_full_view<-ifelse(is.null(input$if_full_view),0,input$if_full_view)
-
+    
+    
     if (if_full_view==1){
       return (paste0(f_pdb_dir,pdbid,".cif"))
     }
