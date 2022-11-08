@@ -1032,10 +1032,11 @@ ui <- fluidPage(
                                                       uiOutput("matrix_hover_info"),
                                                       br(),
                                                       uiOutput("interface_matrix_buttons"),
-                                                      plotOutput("int_matrix_plot",width="580px",height="450px",
+                                                      plotOutput("int_matrix_plot",width="680px",height="600px",
                                                                  hover=hoverOpts("matrix_hover",delay=100,delayType="debounce"),
                                                                  brush = brushOpts(
                                                                    id = "matrix_brush",
+                                                                   delay=1000,delayType="debounce",
                                                                    resetOnNew = FALSE
                                                                  )
                                                       )
@@ -1104,7 +1105,10 @@ ui <- fluidPage(
                                             uiOutput("hover_info"),
                                             downloadButton("download_num_seq",label="Download displayed numbered sequence")
                                             
-                                   )
+                                   )#,
+                                   #tabPanel("test result out",
+                                   #         DT::dataTableOutput("brushed_table")
+                                   #         )
                                  )
                                  
                                  
@@ -1640,6 +1644,8 @@ server <- function(input,output,session){
   # Store the brushed residue information into reactive values
   brushed_all_residues <- reactiveValues(all=NULL)
   brushed_int_residues <- reactiveValues(h=NULL,y=NULL)
+  total_residues_info <- reactiveValues(df=NULL)
+  #brushed_df <- reactiveValues(df=NULL)
   # Clear the brushed area when the user click the button
   observeEvent(input$clearBrush, {
     session$resetBrush("matrix_brush")
@@ -1696,6 +1702,16 @@ server <- function(input,output,session){
     # Get the strings indicating the PDB positions of brushed residues
     brush <- input$matrix_brush
     
+    this_hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+    this_lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+    this_hnum[,"IMGT_numbering_summary"] <-paste0(this_hnum$imgt_numbering,"(",this_hnum$VorC,")")
+    this_lnum[,"IMGT_numbering_summary"] <-paste0(this_lnum$imgt_numbering,"(",this_lnum$VorC,")")
+    names(this_hnum) <- paste0(names(this_hnum),"_H")
+    names(this_lnum) <- paste0(names(this_lnum),"_L")
+    
+    this_total_num <- tidyr::crossing(this_hnum,this_lnum)
+    total_residues_info$df<- this_total_num
+    
     if (is.null(brush)){
       brushed_all_residues$all <- NULL
       
@@ -1704,19 +1720,16 @@ server <- function(input,output,session){
     }
     else{
       b_point <- brushedPoints(plotData,brush, xvar="hid",yvar="lid")
-      brushed_residues <- apply(b_point, MARGIN = 1, 
-                                function(x){
-                                  result=get_res_info_in_matrix(iden_code,as.character(x[1]),as.character(x[2]),res_info_dir)
-                                  result$hid=x[1][[1]]
-                                  result$lid=x[2][[1]]
-                                  result$value=x[3][[1]]
-                                  result$if_h_interface=x[4][[1]]
-                                  result$if_l_interface=x[5][[1]]
-                                  result$if_both_interface=x[6][[1]]
-                                  result
-                                })
       
-      brushed_residues_df=as.data.frame(do.call(rbind,brushed_residues))
+      brushed_residues_df <- merge(x=total_residues_info$df,y=b_point,
+                                by.x=c("IMGT_numbering_summary_H","IMGT_numbering_summary_L"),
+                                by.y=c("hid","lid")
+                                )
+      names(brushed_residues_df)[names(brushed_residues_df)=="pdb_numbering_H"]<-"hpdb"
+      names(brushed_residues_df)[names(brushed_residues_df)=="pdb_numbering_L"]<-"lpdb"
+      
+      
+      
       brushed_residues_df=brushed_residues_df[!(brushed_residues_df$hpdb=="NULL" | brushed_residues_df$lpdb=="NULL"),]
       rownames(brushed_residues_df)<-NULL
       
@@ -1725,6 +1738,15 @@ server <- function(input,output,session){
       lchain=substr(hlid,2,2)
       
       brushed_interface_residue=brushed_residues_df[brushed_residues_df$if_both_interface==1,]
+      
+      #brushed_df$df <-b_point
+      #brushed_df$df <-this_total_num
+      #brushed_df$df <-this_total_num
+      #output$brushed_table <- DT::renderDataTable({
+      #  DT::datatable(brushed_df$df)
+        #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
+      #})
+      
       
       h_position_str_vec <- paste0 (brushed_residues_df$hpdb, ":", hchain)
       h_p_str <- paste(h_position_str_vec,collapse=' or ')
@@ -1743,8 +1765,10 @@ server <- function(input,output,session){
       l_int_p_str <- paste(l_int_position_str_vec,collapse=' or ')
       
       brushed_all_residues$all <- total_str
-      brushed_int_residues$h <- ifelse(substr(h_int_p_str,1,1)==":",NULL,h_int_p_str)
-      brushed_int_residues$l <- ifelse(substr(l_int_p_str,1,1)==":",NULL,l_int_p_str)
+      
+      brushed_int_residues$h <- if (substr(h_int_p_str,1,1)==":") NULL else h_int_p_str
+      brushed_int_residues$l <- if (substr(l_int_p_str,1,1)==":") NULL else l_int_p_str
+      
   
     }
     output$download_matrix <- downloadHandler(
@@ -2131,7 +2155,7 @@ server <- function(input,output,session){
       `if`(!(is.null(brushed_int_residues$l)), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = brushed_int_residues$l)),.) %>%
       
       `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
-      `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       `if`(!(is.null(brushed_int_residues$h)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$h,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       `if`(!(is.null(brushed_int_residues$l)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$l,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       
@@ -2200,6 +2224,9 @@ server <- function(input,output,session){
     #                  choices=colnames(vcab)[!colnames(vcab) %in% c('pdb','Hchain','Lchain','iden_code','Htype','Ltype','Structural.Coverage')], 
     #                  #multiple=TRUE,
     #                  selected="")
+    
+    # The contact map panel:
+    session$resetBrush("matrix_brush")
     
     # The popsComp panel:
     pops_info$mess <- NULL
