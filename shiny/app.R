@@ -108,25 +108,49 @@ generate_blast_result <- function(o_seq,db_dir,suffix=""){
     return (NULL)
   }
   else {
-    withProgress(message="BLASTing...",value=0,{
-      db <- blast(db=db_dir,type="blastp")
-      aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
-      seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
-      
-      ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
-      # Rank seq_pred
-      seq_pred <- seq_pred[order(seq_pred$Bits,decreasing=TRUE),]
-      blast_df <- seq_pred[,2:12]
-      rownames(blast_df) <- NULL
-      
-      # generate the column of "iden_code"
-      split_id <- function(i,sep){
-        strsplit(i,sep)[[1]][1]
+    str_seq_vec=strsplit(str_seq,"\n")
+    str_seq_vec=gsub(" ","",str_seq_vec[[1]])
+    title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"")
+    str_seq=ifelse(title=="",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
+    
+    if ("b" %in% tolower(str_seq) || "j" %in% tolower(str_seq)|| "o" %in% tolower(str_seq)|| "u" %in% tolower(str_seq)|| "x" %in% tolower(str_seq)|| "z" %in% tolower(str_seq)){
+      showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+      return (NULL)
+    }
+    tryCatch(
+      expr={
+        withProgress(message="BLASTing...",value=0,{
+          db <- blast(db=db_dir,type="blastp")
+          aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
+          seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
+          
+          ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
+          # Rank seq_pred
+          seq_pred <- seq_pred[order(seq_pred$Bits,decreasing=TRUE),]
+          blast_df <- seq_pred[,2:12]
+          rownames(blast_df) <- NULL
+          
+          # generate the column of "iden_code"
+          split_id <- function(i,sep){
+            strsplit(i,sep)[[1]][1]
+          }
+          colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
+          blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
+          return (blast_df)
+        })
+      },
+      error = function (e){
+        # The file os not a valid fasta file
+        showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        return (NULL)
+      },
+      warning = function (w){
+        showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        return (NULL)
       }
-      colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
-      blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
-      return (blast_df)
-    })
+    )
+    
+    
     
   }
 } # return the dataframe of the complete result of the blast
@@ -1392,7 +1416,8 @@ server <- function(input,output,session){
           # BLAST:
           blast_df <- generate_blast_result(input$seq_txt,blast_db_dir) # return the dataframe of the complete result of the blast
           if (is.null(blast_df)==FALSE){
-            VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+            #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+            VCAb_blast_df <- blast_df
             
             # To observe if the user choose the correct chain type
             if(input$seq_type != "unknown_seq"){
