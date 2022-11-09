@@ -1,0 +1,33 @@
+.nav a.disabled {
+background-color: #ddd !important;
+color: #000 !important;
+cursor: not-allowed !important;
+border: 1px solid;
+border-color: #aaa !important;
+}
+
+.nav a.available {
+  color: #2766A2;
+  background-color: #FFFFFF;
+  border: 1px solid #2766A2;
+  border-radius: 4px;
+}
+
+.nav .disabledWithoutBackground {
+color: #000 !important;
+cursor: not-allowed !important;
+border-color: #aaa !important;
+width: 1px !important;
+}
+
+.nav .disabledWithoutBackground:hover {
+color: #000 !important;
+cursor: not-allowed !important;
+border-color: #aaa !important;
+width: 1px !important;
+background-color: #FFFFFF !important;
+}
+
+.nav a.removed {
+  display: none;
+}

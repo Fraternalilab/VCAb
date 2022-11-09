@@ -8,6 +8,7 @@ library (shinyhelper)
 library (ggplot2)
 library(seqinr)
 library(shinyBS)
+library(shinyjs)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/final_vcab.csv"
@@ -483,25 +484,30 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
 }
 
 get_similar_interface <- function(iden_code,dm_df){
-  sub_df_row=dm_df[dm_df$X==iden_code,!(names(dm_df) %in% c("X"))]
-  rownames(sub_df_row) <- NULL
-  t_sub_df_row=t(sub_df_row) # first extract the rows, then transpose the df into column
-  rownames(t_sub_df_row) <- lapply(rownames(t_sub_df_row),function(x){substring(x,2)})
-  colnames(t_sub_df_row) <- c("row_extraction")
+  withProgress("Searching through VCAb to find antibodies with similar CH1-CL interface...",value=0,
+               {
+                 sub_df_row=dm_df[dm_df$X==iden_code,!(names(dm_df) %in% c("X"))]
+                 rownames(sub_df_row) <- NULL
+                 t_sub_df_row=t(sub_df_row) # first extract the rows, then transpose the df into column
+                 rownames(t_sub_df_row) <- lapply(rownames(t_sub_df_row),function(x){substring(x,2)})
+                 colnames(t_sub_df_row) <- c("row_extraction")
+                 
+                 sub_df_col=data.frame(col_extraction=dm_df[,paste0("X",iden_code)])
+                 rownames(sub_df_col) <- dm_df$X
+                 
+                 sub_df <- cbind(t_sub_df_row,sub_df_col) # combine the distance listed in the row (iden_code) and col(Xiden_code)
+                 sub_df$o_interface_difference_index <- apply(sub_df,1,max) # The max value of the row_extraction and col_extraction is the interface_diff_index
+                 sub_df$interface_difference_index <- unlist(lapply(sub_df$o_interface_difference_index,function(x){round(x,2)}))
+                 similar_interface_df <- head(sub_df[order(sub_df$interface_difference_index),],11)
+                 similar_interface_df$iden_code <- rownames(similar_interface_df)
+                 
+                 similar_interface_df<- similar_interface_df[,c("iden_code","interface_difference_index")]
+                 rownames(similar_interface_df) <- NULL
+                 names(similar_interface_df)[2]<-"interface.difference.index"
+                 return (similar_interface_df)
+               }
+               )
   
-  sub_df_col=data.frame(col_extraction=dm_df[,paste0("X",iden_code)])
-  rownames(sub_df_col) <- dm_df$X
-  
-  sub_df <- cbind(t_sub_df_row,sub_df_col) # combine the distance listed in the row (iden_code) and col(Xiden_code)
-  sub_df$o_interface_difference_index <- apply(sub_df,1,max) # The max value of the row_extraction and col_extraction is the interface_diff_index
-  sub_df$interface_difference_index <- unlist(lapply(sub_df$o_interface_difference_index,function(x){round(x,2)}))
-  similar_interface_df <- head(sub_df[order(sub_df$interface_difference_index),],11)
-  similar_interface_df$iden_code <- rownames(similar_interface_df)
-  
-  similar_interface_df<- similar_interface_df[,c("iden_code","interface_difference_index")]
-  rownames(similar_interface_df) <- NULL
-  names(similar_interface_df)[2]<-"interface.difference.index"
-  return (similar_interface_df)
 }
 
 ## Functions to display antibody numbering
@@ -630,7 +636,7 @@ generating_vc_num_info <- function(vcnum){
       else if (num>=97&&num<=104){
         vcnum[i,"region"] <- "strand F"
       }
-      else if (num>=105&&num<=117){
+      else if (num>=105&&num<=117){+
         vcnum[i,"region"] <- "FG loop"
       }
       else{
@@ -831,6 +837,12 @@ ui <- fluidPage(
   "V and C region bearing Antibody Database"),
   windowTitle = "VCAb antibody database"),
   tags$em(paste0("Last updated: ",update_date)),
+  useShinyjs(),
+  extendShinyjs(
+    "enable_disable_tabPanel.js", functions = c( "enableTab", "disableTab", "removeTab",
+                                                     "disableTabWithoutBackground", "hitButton" )
+  ),
+  includeCSS( "www/enable_disable_tabPanel.css" ),
   navbarPage("",
              tabPanel("Search",
                       fluidRow(
@@ -842,36 +854,61 @@ ui <- fluidPage(
                                                                         
                                                                ),
                                                                tabPanel("Features",
-                                                                        selectInput("species","Species:",choices=c("All",unique(vcab$Species)))%>%
-                                                                          helper(type="inline",title="Species",
-                                                                                 content=c("Species annotation for the antibody.")),
-                                                                        selectInput("iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
-                                                                          helper(type="inline",title="Isotype", 
-                                                                                 content=c("Isotypes are classified by the sequence of C region on H chain.",
-                                                                                           "Each isotype has different function.")),
+                                                                        column(5,
+                                                                                selectInput("species","Species: ",choices=c("All",unique(vcab$Species)),
+                                                                                            label=helper(shiny_tag = "Species:       r", colour = "royalblue2",
+                                                                                              type="inline",title="Species",content=c("Species annotation for the antibody."))
+                                                                                            ),
+                                                                                selectInput("iso_txt","Isotype:",
+                                                                                            label=helper(shiny_tag="Isotype:        r",color="royalblue2",
+                                                                                                         type="inline",title="Isotype", 
+                                                                                                         content=c("Isotypes are classified by the sequence of C region on H chain.",
+                                                                                                                   "Each isotype has different function.")
+                                                                                                         ),
+                                                                                            choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))), 
+                                                                                  
+                                                                                
+                                                                                selectInput("Ltype_txt","Light chain type:",
+                                                                                            label=helper(
+                                                                                              shiny_tag="Light chain type:        r",color="royalblue2",
+                                                                                              type="inline",title="Light chain type", 
+                                                                                              content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")
+                                                                                            ),
+                                                                                            choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))
+                                                                                            ),
+                                                                                selectInput("struc_cov","Structural Coverage:",
+                                                                                            label=helper(
+                                                                                              shiny_tag="Structural Coverage:        r",color="royalblue2",
+                                                                                              type="inline", title="Structural Coverage",
+                                                                                              content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                                                                        "Full antibody covers both Fab and Fc region")
+                                                                                            ),
+                                                                                            choices=c("All",sort(unique(vcab$Structural.Coverage)))
+                                                                                            )
+                                                                                ),
+                                                                        column(5,offset=2,
+                                                                               selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                                                                 helper(type="inline",title="If has antigen",
+                                                                                        content=c("If the pdb file of this entry containing the antigen chain",
+                                                                                                  "Any: include the antibody in the results no matter if it has antigen or not",
+                                                                                                  "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                                                                  "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                                                                               
+                                                                               selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                                                                 helper(type="inline",title="Experimental Method",
+                                                                                        content=c("The experimental method used to acquire the structure.")),
+                                                                                
+                                                                                
+                                                                               numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                                                                 helper(type="inline",title="Resolution Threshold",
+                                                                                        content=c("This is used to acquire structures with resolution below the threshold.",
+                                                                                                  "The threshold can be set to value from 1 to 5.")) 
+                                                                               
+                                                                                # Just empty the input to allow the user to select ab without the limit of resolution.
+                                                                                
+                                                                                ),
+                                                                        fluidRow()
                                                                         
-                                                                        selectInput("Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
-                                                                          helper(type="inline",title="Light chain type", 
-                                                                                 content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                                                        selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                                                          helper(type="inline", title="Structural Coverage",
-                                                                                 content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                                                           "Full antibody covers both Fab and Fc region")),
-                                                                        selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                                                          helper(type="inline",title="If has antigen",
-                                                                                 content=c("If the pdb file of this entry containing the antigen chain",
-                                                                                           "Any: include the antibody in the results no matter if it has antigen or not",
-                                                                                           "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                                                           "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                                                        
-                                                                        selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                                                          helper(type="inline",title="Experimental Method",
-                                                                                 content=c("The experimental method used to acquire the structure.")),
-                                                                        numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                                                          helper(type="inline",title="Resolution Threshold",
-                                                                                 content=c("This is used to acquire structures with resolution below the threshold.",
-                                                                                           "The threshold can be set to value from 1 to 5.")) 
-                                                                        # Just empty the input to allow the user to select ab without the limit of resolution.
                                                                         
                                                                ),
                                                                
@@ -957,16 +994,50 @@ ui <- fluidPage(
                                                                
                                                    ),
                                                    
-                                                   actionButton("search","Search") 
+                                                   actionButton("search","Search")#,
+                                                   
+                                                   
                                    )
                                    )
                         
                         
                       ),
                       fluidRow(
+                        tagList(
+                          tags$head(tags$style(type="text/css", "
+                                             #loadmessage {
+                                               
+                                               
+                                               width: 100%;
+                                               padding: 5px 0px 5px 0px;
+                                               text-align: center;
+                                               font-weight: bold;
+                                               font-size: 100%;
+                                               color: #000000;
+                                               background-color: #FF5733;
+                                               z-index: 105;
+                                               opacity: 0.6;
+                                               }
+                                               "),
+                                    tags$script(
+                                      type="text/javascript",src = "busy.js"
+                                    )
+                                    )
+                        ),
+                        
+                        #position: fixed;top: 0px;left: 0px;
+                        
+                        conditionalPanel(condition="$('html').hasClass('shiny-busy')",
+                                         tags$div(class="busy","Loading...",id="loadmessage"))
+                      ),
+                      fluidRow(
+                        
                         
                         column(7,
                                wellPanel(
+                                 HTML("<b> Enter the query input into the panel above, select one entry in the \"Antibody information\"
+                                      tab to enable the other tab panels.</b>
+                                      "),
                                  tabsetPanel(id="residue_list_panel",
                                              tabPanel("Antibody information",
                                                       # show the antibody information table
@@ -984,7 +1055,7 @@ ui <- fluidPage(
                                                         column(5,
                                                                strong ("Filter the results by features:"),
                                                                br(),br(),
-                                                               selectInput("flt_species","Species:",choices=unique(vcab$Species)) %>%
+                                                               selectInput("flt_species","Species:",choices=c("All",unique(vcab$Species))) %>%
                                                                  helper(type="inline",title="Species",
                                                                         content=c("Species annotation for the antibody")),
                                                                selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
@@ -1028,7 +1099,7 @@ ui <- fluidPage(
                                                       
                                                
                                              ),
-                                             tabPanel("Fab H-L contact map",
+                                             tabPanel("Fab H-L contact map",value="Fab_H-L_contact_map",
                                                       uiOutput("matrix_hover_info"),
                                                       br(),
                                                       uiOutput("interface_matrix_buttons"),
@@ -1042,7 +1113,7 @@ ui <- fluidPage(
                                                       )
                                                       
                                                       ),
-                                             tabPanel("H-L interface residues",
+                                             tabPanel("H-L interface residues",value="H-L_interface_residues",
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       textOutput("pops_message") %>%
                                                         helper(type="inline",title="CH1-CL interface residues",
@@ -1061,7 +1132,7 @@ ui <- fluidPage(
                                                       )
                                                       
                                              ),
-                                             tabPanel("Disulfide Bond",
+                                             tabPanel("Disulfide Bond",value="Disulfide_Bond",
                                                       br(),
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       actionButton("clear_sele_disulfide","Clear selected residues"),
@@ -1075,7 +1146,7 @@ ui <- fluidPage(
                         column(5,
                                wellPanel(
                                  tabsetPanel(
-                                   tabPanel("Structural Viewer",
+                                   tabPanel("Structural Viewer",value="Structural_Viewer",
                                             # show the structure viewer
                                             textOutput("struc_selected_message") %>%
                                               helper(type="inline",title="Structure viewer",
@@ -1092,10 +1163,10 @@ ui <- fluidPage(
                                             uiOutput("viewer_legend")
                                             
                                    ),
-                                   tabPanel("Sequence Coverage",
+                                   tabPanel("Sequence Coverage",value="Sequence_Coverage",
                                             plotOutput("seq_cov_plot")
                                    ),
-                                   tabPanel("Sequence numbering",
+                                   tabPanel("Sequence numbering",value="Sequence_numbering",
                                             radioButtons(inputId="num_chain_tabs", label="Choose the sequence to display:", 
                                                          choices=c("Heavy chain sequence" = "Heavy",
                                                                    "Light chain sequence" = "Light"
@@ -1179,6 +1250,7 @@ server <- function(input,output,session){
   ab_info <- reactiveValues() # The reactive value to hold the table of antibody information
   two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
+  
   
   
   observeEvent(input$search,{
@@ -1637,6 +1709,29 @@ server <- function(input,output,session){
   observeEvent(input$clear_sele_disulfide,{
     disulfide_proxy %>% selectRows(NULL)
   })
+  
+  ###### ONLY ENABLE THE "Fab H-L contact map", "Disulfide Bond" AND "H-L interface residues" TAB WHEN THE USER SELECT A STRUCTURE ######
+  observe({
+    if (is.null(input$ab_info_table_rows_selected)){
+      js$disableTab("Fab_H-L_contact_map")
+      js$disableTab("H-L_interface_residues")
+      js$disableTab("Disulfide_Bond")
+      js$disableTab("Structural_Viewer")
+      js$disableTab("Sequence_Coverage")
+      js$disableTab("Sequence_numbering")
+      
+    }
+    else{
+      js$enableTab("Fab_H-L_contact_map")
+      js$enableTab("H-L_interface_residues")
+      js$enableTab("Disulfide_Bond")
+      js$enableTab("Structural_Viewer")
+      js$enableTab("Sequence_Coverage")
+      js$enableTab("Sequence_numbering")
+      
+    }
+  })
+  
   
   ###### TABPANEL: Show Fab contact matrix ######
   if_hide_non_interface <- reactive({ifelse(is.null(input$hide_non_interface),0,input$hide_non_interface)})
@@ -2240,6 +2335,9 @@ server <- function(input,output,session){
     pdb_dir_val$iden_code <- NULL
     #pdb_dir_val$dir <- ""
     pdb_dir_val$mess <- NULL
+    brushed_all_residues <- reactiveValues(all=NULL)
+    brushed_int_residues <- reactiveValues(h=NULL,y=NULL)
+    total_residues_info <- reactiveValues(df=NULL)
     updateCheckboxInput(session,"if_full_view",value=0)
     updateCheckboxInput(session,"zoom_in_sele_res",value=0)
     updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
@@ -2252,12 +2350,18 @@ server <- function(input,output,session){
   # When new tab is selected, initialize everything
   observeEvent(input$tabs,{
     initialize_everything()
+    # Make it automatically switch back to the "antibody information" panel, when the user is switching between the input query panels
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
     
   })
   
   # when new seq tab is selected, initialize everything
   observeEvent(input$seq_tabs,{
     initialize_everything()
+    # Make it automatically switch back to the "antibody information" panel, when the user is switching between the input query panels
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
     
   })
   
