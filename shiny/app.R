@@ -9,6 +9,7 @@ library (ggplot2)
 library(seqinr)
 library(shinyBS)
 library(shinyjs)
+library(reticulate)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/final_vcab.csv"
@@ -60,6 +61,14 @@ vl_num=read.csv(vl_num_dir, row.names = 1)
 ch_num=read.csv(ch_num_dir, row.names = 1)
 cl_num=read.csv(cl_num_dir, row.names = 1)
 
+#### NOTE: this part should be changed on server #########
+# Things needed to number the user-inputted sequence
+imgt_num_py="imgt_numbering_vc.py" # This line doesn't need to be changed.
+use_python("/Users/dongjung/miniconda/bin/python")
+hmmerpath="/Applications/moe2020/bin-mac64"
+source_python(imgt_num_py) # This line doesn't need to be changed.
+######--------------#########
+
 
 
 # Files required to plot the seq_cov plot
@@ -101,23 +110,37 @@ release_fn="../vcab_db/release.txt"
 release=readChar(release_fn, file.info(release_fn)$size)
 
 ####################### Functions #######################
-# Generate blast table: return the best blast result (order: highest iden, alignment_length)
-generate_blast_result <- function(o_seq,db_dir,suffix=""){
+# Check for usr_input sequence: extract the pure sequence and the fasta title
+check_usr_inputted_seq <- function(o_seq){
   str_seq <- as.character(o_seq)
   if (str_seq==""){
-    return (NULL)
+    return (list("seq"=NULL,"title"=NULL))
   }
-  else {
+  else{
     str_seq_vec=strsplit(str_seq,"\n")
     str_seq_vec=gsub(" ","",str_seq_vec[[1]])
-    title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"")
-    str_seq=ifelse(title=="",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
+    title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"test_seq")
+    str_seq=ifelse(title=="test_seq",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
     
-    if ("b" %in% tolower(str_seq) || "j" %in% tolower(str_seq)|| "o" %in% tolower(str_seq)|| "u" %in% tolower(str_seq)|| "x" %in% tolower(str_seq)|| "z" %in% tolower(str_seq)){
+    if (grepl("b",tolower(str_seq)) || grepl("j",tolower(str_seq))|| grepl("o",tolower(str_seq))|| grepl("u",tolower(str_seq))|| grepl("x",tolower(str_seq))|| grepl("z",tolower(str_seq))){
       showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
-      return (NULL)
+      return (list("seq"=NULL,"title"=NULL))
     }
-    tryCatch(
+    else{
+      return (list("seq"=str_seq,"title"=title))
+    }
+    
+  }
+}
+
+# Generate blast table: return the best blast result (order: highest iden, alignment_length)
+generate_blast_result <- function(o_seq,db_dir,suffix=""){
+  str_seq <- check_usr_inputted_seq(o_seq)$seq
+  if (is.null(str_seq)){
+    return (NULL)
+  }
+  
+  tryCatch(
       expr={
         withProgress(message="BLASTing...",value=0,{
           db <- blast(db=db_dir,type="blastp")
@@ -148,11 +171,8 @@ generate_blast_result <- function(o_seq,db_dir,suffix=""){
         showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
         return (NULL)
       }
-    )
+  )
     
-    
-    
-  }
 } # return the dataframe of the complete result of the blast
 
 blast_paired_chains <- function (ab_title,hseq,lseq,region){
@@ -558,6 +578,10 @@ extracting_num_df <- function(iden_code,res_info_dir){
 generating_vc_num_info <- function(vcnum){
   # Generating the dataframe containing the information of the name of fragments
   # vcnum is the result generated from extracting_num_df, which has the information of both V and C numbering information
+  if (is.null(vcnum)){
+    return (NULL)
+  }
+  vcnum[,"insertion"] <- unlist(lapply(vcnum$insertion,function(x){ifelse(x==" ",NA_character_,x)}))
   vcnum[,"region"]<-NA
   
   
@@ -660,7 +684,7 @@ generating_vc_num_info <- function(vcnum){
       else if (num>=97&&num<=104){
         vcnum[i,"region"] <- "strand F"
       }
-      else if (num>=105&&num<=117){+
+      else if (num>=105&&num<=117){
         vcnum[i,"region"] <- "FG loop"
       }
       else{
@@ -679,7 +703,11 @@ generating_vc_num_info <- function(vcnum){
       if (nrow(ss_num)>=1){
         rownames(ss_num) <- NULL
         vc <- ss_num[1,"VorC"]
-        ss_num[nrow(ss_num) + 1,] = c(vc,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,r)
+        #ss_num[nrow(ss_num) + 1,] = c(vc,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,r)
+        ss_num[nrow(ss_num) + 1,] = c(vc,rep(NA_character_,ncol(ss_num)-2),r)
+      }
+      else if (nrow(ss_num)==0){
+        ss_num[1,]=c(rep(NA_character_,ncol(ss_num)-1),"")
       }
       s_num <- append(s_num,list(ss_num))
     }
@@ -704,6 +732,7 @@ generating_vc_num_info <- function(vcnum){
   
 }
 
+
 get_numbering_plot <- function(num_df){
   
   region_pos <- data.frame("region"=unique(num_df[,"region"]))
@@ -724,7 +753,7 @@ get_numbering_plot <- function(num_df){
   #region_pos$y <- factor(region_pos$y,
   #                       levels=c(1,2,3,4,5,6,7,8,9))
   
-  
+  #return (region_pos)
   g <- ggplot(num_df, aes_string(x="x", y = "y")) + 
     scale_y_discrete(drop = FALSE, name = "C                                      V") +
     scale_x_discrete(drop = FALSE, name = "") +
@@ -739,14 +768,13 @@ get_numbering_plot <- function(num_df){
     ) +
     # Add region labels
     geom_text(data=region_pos,aes(label=region),x=(region_pos[,"start"]+region_pos[,"end"])/2,vjust=-1.5,fontface='bold',size=5)+
-    geom_tile(data=num_df[!is.na(num_df$residue), ],aes_string(x="x",y="y",fill="VorC"), alpha=0.5,height = 0.5)+ # add background
+    geom_tile(data=num_df[!is.na(num_df$res_code), ],aes_string(x="x",y="y",fill="VorC"), alpha=0.5,height = 0.5)+ # add background
     scale_fill_manual(values=c("V"=alpha("deepskyblue3", .5),"C"=alpha("darkorange", .5)),guide = "none")+
     geom_text(data=num_df,aes_string(x="x",y="y",label="res_code"),hjust=0,nudge_x=-0.5) # add sequence residues
-    
+  
   return (g)
   
 }
-
 extract_seq_from_num_df <- function(df,Id_code){
   df <- df[,c("VorC","region","res_code","imgt_numbering")]
   df <- df[complete.cases(df),]
@@ -763,6 +791,7 @@ extract_seq_from_num_df <- function(df,Id_code){
   return (list(titles=c(v_title,c_title),seqs=list(vseq,cseq),num_df=df))
   
 }
+
 
 get_res_info_in_matrix <- function(iden_code,hnumbering,lnumbering,res_info_dir){
   #chnumbering,clnumbering: the numbering of ch, cl residues
@@ -851,6 +880,18 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
   
 }
 
+vcab_number_usr_input_seq <- function(seq,region,hmmerpath){
+  # region can only be "v_region" or "full_seq"
+  if (is.null(seq)){
+    return (ggplot(NULL))
+  }
+  num_df <- number_usr_input_seq (title, seq, region,hmmerpath)
+  if (is.null(num_df)){
+    return (ggplot(NULL))
+  }
+  num_df_for_plot <- generating_vc_num_info(num_df)
+  get_numbering_plot(num_df_for_plot)
+}
 
 ####################### UI #######################
 ui <- fluidPage(
@@ -940,30 +981,54 @@ ui <- fluidPage(
                                                                tabPanel("Sequence",
                                                                         tabsetPanel(id="seq_tabs",
                                                                                     tabPanel("Search individual sequence",
-                                                                                             textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                                           value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
-                                                                                             
-                                                                                             # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                                             radioButtons(inputId="seq_type", label="The type of this chain:", 
-                                                                                                          choices=c("Heavy Chain" = "Hseq",
-                                                                                                                    "Light Chain" = "Lseq",
-                                                                                                                    "Don't know" = "unknown_seq")),
-                                                                                             checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
-                                                                                               helper(type="inline",title="Add the other paired H/L chain",
-                                                                                                      content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
-                                                                                                                "",
-                                                                                                                "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                                                "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain.")),
-                                                                                             
+                                                                                             fluidRow(
+                                                                                               column(5,
+                                                                                                      textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                                    value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
+                                                                                                      
+                                                                                                      # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                                      radioButtons(inputId="seq_type", label="The type of this chain:", 
+                                                                                                                   choices=c("Heavy Chain" = "Hseq",
+                                                                                                                             "Light Chain" = "Lseq",
+                                                                                                                             "Don't know" = "unknown_seq")),
+                                                                                                      checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
+                                                                                                        helper(type="inline",title="Add the other paired H/L chain",
+                                                                                                               content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
+                                                                                                                         "",
+                                                                                                                         "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                         "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain."))
+                                                                                                      
+                                                                                                      ),
+                                                                                               column(4,
+                                                                                                      
+                                                                                                     uiOutput("ui_num_plot_usr1")
+                                                                                                      ),
+                                                                                               column(3,
+                                                                                                      uiOutput("ui_num_info_seq1")
+                                                                                                      )
+                                                                                               
+                                                                                             ),
+                                                                                      
                                                                                              conditionalPanel(
                                                                                                condition="input.two_chains==1",
-                                                                                               textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                                             value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
+                                                                                               fluidRow(
+                                                                                                 column(5,
+                                                                                                        textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                                      value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
+                                                                                                        
+                                                                                                        # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                                        radioButtons(inputId="seq_type_2", label="The type of this chain:", 
+                                                                                                                     choices=c("Heavy Chain" = "Hseq",
+                                                                                                                               "Light Chain" = "Lseq"))
+                                                                                                        ),
+                                                                                                 column(4,
+                                                                                                        uiOutput("ui_num_plot_usr2")
+                                                                                                        ),
+                                                                                                 column(3,
+                                                                                                        uiOutput("ui_num_info_seq2")
+                                                                                                 )
+                                                                                               )
                                                                                                
-                                                                                               # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                                               radioButtons(inputId="seq_type_2", label="The type of this chain:", 
-                                                                                                            choices=c("Heavy Chain" = "Hseq",
-                                                                                                                      "Light Chain" = "Lseq"))
                                                                                              )
                                                                                              
                                                                                              
@@ -989,14 +1054,30 @@ ui <- fluidPage(
                                                                         
                                                                         # horizontal line
                                                                         tags$hr(), 
-                                                                        radioButtons(inputId="sele_bl_db", label="Select the region of your interest:",
-                                                                                     choices=c("V region"="v_region",
-                                                                                               "Full sequence (V & C)"="full_seq")) %>%
-                                                                          helper(type="inline",title="Selection of the database to BLAST against",
-                                                                                 content = c("This selection would determine the database to be BLAST against.",
-                                                                                             "",
-                                                                                             "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
-                                                                                             "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
+                                                                        fluidRow(
+                                                                          column(5,
+                                                                                 radioButtons(inputId="sele_bl_db",
+                                                                                              label=helper(
+                                                                                                shiny_tag="Select the region of your interest:        r",color="royalblue2",
+                                                                                                type="inline", title="Selection of the database to BLAST against",
+                                                                                                content=c("This selection would determine the database to be BLAST against, and the region will be numbered according to IMGT scheme.",
+                                                                                                          "",
+                                                                                                          "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
+                                                                                                          "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. ")),
+                                                                                              choices=c(
+                                                                                                "Full sequence (V & C)"="full_seq",
+                                                                                                "V region"="v_region"))
+                                                                                 ),
+                                                                          column(4,
+                                                                                 # To display the option to add usr selected C sequence
+                                                                                 "something"
+                                                                                 ),
+                                                                          column(3,
+                                                                                 # To display the Download button to download numbered sequence shown in the plot
+                                                                                 uiOutput("ui_download_num_usr_seq")
+                                                                                 )
+                                                                        )
+                                                                        
                                                                ),
                                                                tabPanel("CH1-CL Interface",
                                                                         tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
@@ -1313,8 +1394,9 @@ server <- function(input,output,session){
     })
     # Do the actual job
     if (tabs_value() == "PDB"){
-      if(input$pdb_txt %in% pdbs){
-        o_df <- vcab %>% dplyr::filter(pdb==input$pdb_txt)
+      inputted_pdb<- tolower(input$pdb_txt)
+      if(inputted_pdb %in% pdbs){
+        o_df <- vcab %>% dplyr::filter(pdb==inputted_pdb)
         final_df <- addShow(o_df,ns)
         ab_info$ab_info_df <- final_df
         ab_info$chain_type_message <- NULL
@@ -1371,6 +1453,107 @@ server <- function(input,output,session){
           
         }
         
+        ##### NUMBER ANTIBODY SEQUENCE: Calculate the numbering for the first sequence #######
+        seq1_info <- check_usr_inputted_seq(input$seq_txt)
+        seq1_seq <- seq1_info$seq
+        seq1_title <- paste0(seq1_info$title,input$seq_type)
+        o_num_plot_usr_seq_1 <- vcab_number_usr_input_seq(seq1_seq,input$sele_bl_db,hmmerpath)
+        
+        output$ui_num_plot_usr1 <- renderUI({
+          tagList(
+            p(HTML(paste0("<b>Numbering the user inputted sequence (IMGT scheme): </b><br/>",
+                   "Hover on the residues to show the detailed numbering information <br/>",
+                   "<b>",ifelse(input$seq_type=="Hseq","Heavy chain:","Light chain:"), "</b><br/>")
+                   )),
+            plotOutput("num_plot_usr1",width="560px",height="400px",
+                       hover=hoverOpts("num_hover_seq1",delay=100,delayType="debounce",nullOutside=FALSE)
+                       )
+            
+          )
+          
+        })
+        output$num_plot_usr1 <- renderPlot({
+          o_num_plot_usr_seq_1
+        })
+        output$ui_num_info_seq1 <- renderUI({
+          hover <- input$num_hover_seq1
+          num_df <- o_num_plot_usr_seq_1$data
+          
+          plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
+          plotData <- plotData[complete.cases(plotData),]
+          point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+          if (nrow(point) == 0) return(NULL)
+          if (point$res_code=="-") return(NULL)
+          
+          fluidRow(
+            style="height:70px",
+            
+            p(HTML(paste0("<b>",ifelse(input$seq_type=="Hseq","Heavy chain","Light chain"), "</b><br/>",
+                          "<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                          "<b> Residue: </b>", point$res_code, "<br/>",
+                          "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
+                          "<b> Fragment: </b>", point$region, "<br/>")))
+            
+           
+          )
+        })
+        
+        ##### ------ #####
+        
+        ##### Make the numbered usr_seq available to download #######
+        usr_seq2_info <- reactiveValues(seq2_info=NULL)
+        output$ui_download_num_usr_seq <- renderUI({
+          tagList(
+            br(),
+            downloadButton("download_num_usr_seq",label="Download displayed numbered sequence")#,
+            #p(HTML(paste0(
+            #  "<b> Hover on the residues in the plot on the left to show residue numbering information:<b/> <br/>"
+            #)))
+          )
+        })
+        
+        output$download_num_usr_seq <- downloadHandler(
+          filename=function(){
+            title <- ifelse(is.null(usr_seq2_info$seq2_info$seq),paste0(seq1_info$title,"_",input$seq_type),
+                            ifelse(seq1_info$title==usr_seq2_info$seq2_info$title,seq1_info$title,paste0(seq1_info$title,"_",usr_seq2_info$seq2_info$title)))
+            paste0(title,"_sequence_numbering_info",".zip")
+          },
+          content=function(f_name){
+            seq_name <- paste0(seq1_info$title,"_",input$seq_type)
+            num_df <- o_num_plot_usr_seq_1$data
+            
+            temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+            dir.create(temp_directory)
+            
+            num_info=extract_seq_from_num_df(num_df,seq_name)
+            pure_num_df=num_info$num_df
+            pure_num_df_name <-paste0(seq_name,"_num_info.csv")
+            fasta_name <- paste0(seq_name,"_seq_with_gaps.fasta")
+            
+            write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
+            write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
+            
+            if (is.null(usr_seq2_info$seq2_info$seq)==FALSE){
+              seq2_info <- usr_seq2_info$seq2_info
+              seq2_name <- paste0(seq2_info$title,"_",input$seq_type_2)
+              num_df_2 <- o_num_plot_usr_seq_2$data
+              
+              num_info_2=extract_seq_from_num_df(num_df_2,seq2_name)
+              pure_num_df_2=num_info_2$num_df
+              pure_num_df_name_2 <-paste0(seq2_name,"_num_info.csv")
+              fasta_name_2 <- paste0(seq2_name,"_seq_with_gaps.fasta")
+              
+              write.csv(pure_num_df_2,file.path(temp_directory,pure_num_df_name_2))
+              write.fasta(num_info_2$seqs,num_info_2$titles,file.path(temp_directory,fasta_name_2))
+            }
+            
+            zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+            
+          },
+          contentType="application/zip"
+        )
+        ##### ------ #####
+        
         ## Check if the user choose to input two chains ##
         if (two_chains()==1){
           # If there are two chains:
@@ -1401,6 +1584,50 @@ server <- function(input,output,session){
             showModal(modalDialog(title="Wrong input for \"chain type\" ", 
                                   "When sequences for both chains of the antibody is inputted, the chain types selected must be exactly one H and one L chain."))
           }
+          
+          ##### NUMBER ANTIBODY SEQUENCE: Number the second usr_sequence: #######
+          seq2_info <- check_usr_inputted_seq(input$seq_txt_2)
+          usr_seq2_info$seq2_info <- seq2_info
+          seq2_seq <- seq2_info$seq
+          seq2_title <- paste0(seq2_info$title,input$seq_type_2)
+          o_num_plot_usr_seq_2 <- vcab_number_usr_input_seq(seq2_seq,input$sele_bl_db,hmmerpath)
+          
+          output$ui_num_plot_usr2 <- renderUI({
+            tagList(
+              p(HTML(paste0(
+                "<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain:","Light chain:"), "</b><br/>"
+              ))),
+              plotOutput("num_plot_usr2",width="560px",height="400px",
+                         hover=hoverOpts("num_hover_seq2",delay=100,delayType="debounce",nullOutside=FALSE)
+              )
+            )
+            
+          })
+          output$num_plot_usr2 <- renderPlot({
+            o_num_plot_usr_seq_2
+          })
+          output$ui_num_info_seq2 <- renderUI({
+            hover <- input$num_hover_seq2
+            num_df <- o_num_plot_usr_seq_2$data
+            
+            plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
+            plotData <- plotData[complete.cases(plotData),]
+            point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+            if (nrow(point) == 0) return(NULL)
+            if (point$res_code=="-") return(NULL)
+            
+            fluidRow(
+              style="height:70px",
+              
+              p(HTML(paste0("<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain","Light chain"), "</b><br/>",
+                            "<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                            "<b> Residue: </b>", point$res_code, "<br/>",
+                            "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
+                            "<b> Fragment: </b>", point$region, "<br/>")))
+              
+            )
+          })
+          ##### ------ #####
           
         }
         else{
@@ -2001,6 +2228,7 @@ server <- function(input,output,session){
     plotData <- plotData[complete.cases(plotData),]
     point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
     if (nrow(point) == 0) return(NULL)
+    if (point$res_code=="-") return(NULL)
     
     
     # calculate point position INSIDE the image as percent of total dimensions
