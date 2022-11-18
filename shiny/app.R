@@ -704,7 +704,12 @@ generating_vc_num_info <- function(vcnum){
         rownames(ss_num) <- NULL
         vc <- ss_num[1,"VorC"]
         #ss_num[nrow(ss_num) + 1,] = c(vc,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,r)
-        ss_num[nrow(ss_num) + 1,] = c(vc,rep(NA_character_,ncol(ss_num)-2),r)
+        if(colnames(ss_num)[1]=="VorC"){
+          ss_num[nrow(ss_num) + 1,] = c(vc,rep(NA_character_,ncol(ss_num)-2),r)
+        }
+        else{
+          ss_num[nrow(ss_num) + 1,] = c(rep(NA_character_,ncol(ss_num)-2),vc,r)
+        }
       }
       else if (nrow(ss_num)==0){
         ss_num[1,]=c(rep(NA_character_,ncol(ss_num)-1),"")
@@ -778,6 +783,7 @@ get_numbering_plot <- function(num_df){
 extract_seq_from_num_df <- function(df,Id_code){
   df <- df[,c("VorC","region","res_code","imgt_numbering")]
   df <- df[complete.cases(df),]
+  rownames(df)<-NULL
   
   vnum <- df[df["VorC"]=="V",]
   cnum <- df[df["VorC"]=="C",]
@@ -787,6 +793,9 @@ extract_seq_from_num_df <- function(df,Id_code){
   
   v_title <- paste0(Id_code,"_v_seq")
   c_title <- paste0(Id_code,"_c_seq")
+  if (nrow(cnum)==0){
+    return (list(titles=c(v_title),seqs=list(vseq),num_df=df))
+  }
   
   return (list(titles=c(v_title,c_title),seqs=list(vseq,cseq),num_df=df))
   
@@ -891,6 +900,27 @@ vcab_number_usr_input_seq <- function(seq,region,hmmerpath){
   }
   num_df_for_plot <- generating_vc_num_info(num_df)
   get_numbering_plot(num_df_for_plot)
+}
+
+get_usr_selected_cnum <- function(iden_code,seqtype){
+  # vnum: the V num_df of the usr_inputted_sequence
+  # iden_code: the iden_code of the C sequence to be appended
+  # seqtype: returned by the input$seq_type/input$seq_type_2, can be the value "Hseq" or "Lseq"
+  if (is.null(seqtype)){
+    return (NULL)
+  }
+  chaintype <- ifelse(seqtype=="Hseq", "H", "L")
+  entry_num <- read.csv(paste0(res_info_dir,iden_code,"_",chaintype,"_res_info.csv"))
+  cnum <- entry_num[entry_num["VorC"]=="C",]
+  
+  cnum[,"number"] <- as.numeric(regmatches(cnum$imgt_numbering, gregexpr("[[:digit:]]+", cnum$imgt_numbering)))
+  cnum_insertion_code <- regmatches(cnum$imgt_numbering, gregexpr("[[:alpha:]]+", cnum$imgt_numbering))
+  cnum[,"insertion"] <- unlist(lapply(cnum_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
+  
+  cnum <- generating_vc_num_info(cnum)
+  cnum <- cnum[is.na(cnum["VorC"])==FALSE,c("imgt_numbering","res_code","number","insertion","VorC","region","x","y")]
+  cnum
+  
 }
 
 ####################### UI #######################
@@ -1069,8 +1099,8 @@ ui <- fluidPage(
                                                                                                 "V region"="v_region"))
                                                                                  ),
                                                                           column(4,
-                                                                                 # To display the option to add usr selected C sequence
-                                                                                 "something"
+                                                                                 # To display the option to add usr-selected C sequence
+                                                                                 uiOutput("ui_append_c_seq")
                                                                                  ),
                                                                           column(3,
                                                                                  # To display the Download button to download numbered sequence shown in the plot
@@ -1452,12 +1482,22 @@ server <- function(input,output,session){
           }
           
         }
+        ##### NUMBER ANTIBODY SEQUENCE: store the information of the numbering plot #######
+        usr_num_info_1 <- reactiveValues(presented=NULL,original=NULL,attached=NULL) # The info for the first sequence
+        usr_num_info_2 <- reactiveValues(presented=NULL,original=NULL,attached=NULL) # The info for the second sequence
+        # store the plots of the numbering for usr_inputted sequence
+        # presented: ggplot_obj:the numbering shown in current plot; 
+        # original: ggplot_obj:the original numbering for the usr_inputted seq (without the usr_selected Ab C sequence);
+        # attached: Dataframe:the C numbering for the usr_selected Ab entry, assign the value only when the user select V region for analysis
         
         ##### NUMBER ANTIBODY SEQUENCE: Calculate the numbering for the first sequence #######
         seq1_info <- check_usr_inputted_seq(input$seq_txt)
         seq1_seq <- seq1_info$seq
         seq1_title <- paste0(seq1_info$title,input$seq_type)
         o_num_plot_usr_seq_1 <- vcab_number_usr_input_seq(seq1_seq,input$sele_bl_db,hmmerpath)
+        
+        usr_num_info_1$original <- o_num_plot_usr_seq_1
+        usr_num_info_1$presented <- usr_num_info_1$original
         
         output$ui_num_plot_usr1 <- renderUI({
           tagList(
@@ -1473,11 +1513,11 @@ server <- function(input,output,session){
           
         })
         output$num_plot_usr1 <- renderPlot({
-          o_num_plot_usr_seq_1
+          usr_num_info_1$presented
         })
         output$ui_num_info_seq1 <- renderUI({
           hover <- input$num_hover_seq1
-          num_df <- o_num_plot_usr_seq_1$data
+          num_df <- usr_num_info_1$presented$data
           
           plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
           plotData <- plotData[complete.cases(plotData),]
@@ -1500,12 +1540,75 @@ server <- function(input,output,session){
         
         ##### ------ #####
         
+        ##### ADD USR_SELECTED C SEQUENCE TO THE V REGION, if the usr select "V region" for the "select the region of your interest" #####
+        if (input$sele_bl_db=="v_region"){
+          output$ui_append_c_seq <- renderUI({
+            tagList(
+              p(HTML(paste0(
+                "<b> VCAb structure matches are found under the \"Antibody Information\" panel. Please select an entry (by clicking the row of the table).
+                
+                </b></br>",
+                "Antibody you selected:"
+              ))),
+              
+              wellPanel(
+                p(HTML(ifelse(is.null(input$ab_info_table_rows_selected),"",struc_selected())))
+              ),
+              if (is.null(input$ab_info_table_rows_selected)==FALSE){
+                tagList(
+                  actionButton("append_c_seq", "Click to append C sequence of selected structure to the query V sequence"),
+                  actionButton("clear_c_seq", "Clear the appended C sequence")
+                )
+                
+              }
+              
+            )
+            
+          })
+          
+          # ASSIGN THE ATTACHED INFO HERE:
+          observeEvent(input$append_c_seq ,{
+            usr_num_info_1$attached <- get_usr_selected_cnum(struc_selected(),input$seq_type)
+            o_num_df1 <- usr_num_info_1$original$data
+            a_num_df1 <- usr_num_info_1$attached
+            
+            current_num_df1 <- rbind(o_num_df1,a_num_df1)
+            
+            usr_num_info_1$presented <- get_numbering_plot(current_num_df1)
+            
+            usr_num_info_2$attached <- get_usr_selected_cnum(struc_selected(),input$seq_type_2)
+            o_num_df2 <- usr_num_info_2$original$data
+            a_num_df2 <- usr_num_info_2$attached
+            
+            current_num_df2 <- rbind(o_num_df2,a_num_df2)
+            
+            usr_num_info_2$presented <- get_numbering_plot(current_num_df2)
+            
+            
+          })
+          # CLEAR THE ATTACHED INFO HERE:
+          toListen <- reactive({
+            input$clear_c_seq | is.null(input$ab_info_table_rows_selected)
+          })
+          observeEvent(toListen(),{
+            usr_num_info_1$attached <- NULL
+            usr_num_info_2$attached <- NULL
+            usr_num_info_1$presented <- usr_num_info_1$original
+            usr_num_info_2$presented <- usr_num_info_2$original
+            
+          })
+          
+          
+          
+        }
+        ##### ------ #####
+        
         ##### Make the numbered usr_seq available to download #######
-        usr_seq2_info <- reactiveValues(seq2_info=NULL)
+        usr_seq2_info <- reactiveValues(seq2_info=NULL) # stores seq_info like title and sequences
         output$ui_download_num_usr_seq <- renderUI({
           tagList(
             br(),
-            downloadButton("download_num_usr_seq",label="Download displayed numbered sequence")#,
+            downloadButton("download_num_usr_seq",label="Download numbered sequence")#,
             #p(HTML(paste0(
             #  "<b> Hover on the residues in the plot on the left to show residue numbering information:<b/> <br/>"
             #)))
@@ -1520,7 +1623,7 @@ server <- function(input,output,session){
           },
           content=function(f_name){
             seq_name <- paste0(seq1_info$title,"_",input$seq_type)
-            num_df <- o_num_plot_usr_seq_1$data
+            num_df <- usr_num_info_1$presented$data
             
             temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
             dir.create(temp_directory)
@@ -1534,7 +1637,7 @@ server <- function(input,output,session){
             write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
             
             if (is.null(usr_seq2_info$seq2_info$seq)==FALSE){
-              seq2_info <- usr_seq2_info$seq2_info
+              seq2_info <- usr_num_info_2$presented$seq2_info
               seq2_name <- paste0(seq2_info$title,"_",input$seq_type_2)
               num_df_2 <- o_num_plot_usr_seq_2$data
               
@@ -1553,6 +1656,8 @@ server <- function(input,output,session){
           contentType="application/zip"
         )
         ##### ------ #####
+        
+        
         
         ## Check if the user choose to input two chains ##
         if (two_chains()==1){
@@ -1592,6 +1697,9 @@ server <- function(input,output,session){
           seq2_title <- paste0(seq2_info$title,input$seq_type_2)
           o_num_plot_usr_seq_2 <- vcab_number_usr_input_seq(seq2_seq,input$sele_bl_db,hmmerpath)
           
+          usr_num_info_2$original <- o_num_plot_usr_seq_2
+          usr_num_info_2$presented <- usr_num_info_2$original
+          
           output$ui_num_plot_usr2 <- renderUI({
             tagList(
               p(HTML(paste0(
@@ -1604,11 +1712,11 @@ server <- function(input,output,session){
             
           })
           output$num_plot_usr2 <- renderPlot({
-            o_num_plot_usr_seq_2
+            usr_num_info_2$presented
           })
           output$ui_num_info_seq2 <- renderUI({
             hover <- input$num_hover_seq2
-            num_df <- o_num_plot_usr_seq_2$data
+            num_df <- usr_num_info_2$presented$data
             
             plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
             plotData <- plotData[complete.cases(plotData),]
