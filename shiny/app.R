@@ -1220,10 +1220,11 @@ ui <- fluidPage(
                                                                numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
                                                                  helper(type="inline",title="Resolution Threshold",
                                                                         content=c("This is used to acquire structures with resolution below the threshold.",
-                                                                                  "The threshold can be set to value from 1 to 5.")) 
+                                                                                  "The threshold can be set to value from 1 to 5.")),
+                                                               actionButton("filter","Filter")
                                                                # Just empty the input to allow the user to select ab without the limit of resolution.
-                                                        )#,
-                                                        #actionButton("filter","Filter the Results")
+                                                        )
+                                                        
                                                         
                                                       ),
                                                       
@@ -1934,23 +1935,49 @@ server <- function(input,output,session){
     reactive({
       if (tabs_value()=="Sequence"){
         return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
+        #if (input$filter){
+        #filter <- TRUE
+        #observeEvent(input$filter,{
+        #  filter <- filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df)
+          #return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
+        #  print (filter)
+        #  })
+        
+        #return (filter)
+        
+        
+        #}
+        #else{
+        #  return (TRUE)
+        #}
+        
       }
       else{
         return (TRUE)
       }
     })
+    #eventReactive(input$filter,{
+    #  if (tabs_value()=="Sequence"){
+    #    return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
+    #  }
+    #  else{
+    #    return (TRUE)
+    #  }
+    #})
+    #return (reactive({TRUE}))
   }
   
-  
-  
-  
+  displayed_table_rows <-reactiveValues(df=NULL)
+  observe({
+    displayed_table_rows$df <- ab_info$ab_info_df[file_row_idx(ab_info$ab_info_df)(),]
+  })
   
   
   
   # Show the information
   output$chain_type_message <- renderText({ab_info$chain_type_message})
   output$ab_info_table <- DT::renderDataTable({
-    DT::datatable(ab_info$ab_info_df[file_row_idx(ab_info$ab_info_df)(),file_col_idx()],selection="single",escape=F, 
+    DT::datatable(displayed_table_rows$df[,file_col_idx()],selection="single",escape=F, 
                   options=list(scrollX = TRUE))
     #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
   })
@@ -1973,7 +2000,7 @@ server <- function(input,output,session){
     # return the "id" of the structure selected by the user in the following format: H(type)L(type)_pdb_HL
     # IMPORTANT: this format might be changed if I decided to use a different format for the PDB file
     selectedRow <- as.numeric(input$ab_info_table_rows_selected)
-    Ab_info_df <- ab_info$ab_info_df
+    Ab_info_df <- displayed_table_rows$df
     pdb_c <- Ab_info_df[selectedRow,'iden_code']
     return (pdb_c)
   })
