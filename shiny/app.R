@@ -58,8 +58,8 @@ cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
 
 vh_num=read.csv(vh_num_dir, row.names = 1)
 vl_num=read.csv(vl_num_dir, row.names = 1)
-ch_num=read.csv(ch_num_dir, row.names = 1)
-cl_num=read.csv(cl_num_dir, row.names = 1)
+ch_num=read.csv(ch_num_dir)
+cl_num=read.csv(cl_num_dir)
 
 #### NOTE: this part should be changed on server #########
 # Things needed to number the user-inputted sequence
@@ -558,6 +558,9 @@ get_similar_interface <- function(iden_code,dm_df){
 
 extracting_num_df <- function(iden_code,res_info_dir){
   # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (list("hnum"=NULL,"lnum"=NULL))
+  }
   
   hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
   lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
@@ -809,6 +812,10 @@ get_res_info_in_matrix <- function(iden_code,hnumbering,lnumbering,res_info_dir)
   hid=paste0(pdb,"_",substr(hl,1,1))
   lid=paste0(pdb,"_",substr(hl,2,2))
   
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (list("hres"=NULL,"lres"=NULL,"hpdb"=NULL, "lpdb"=NULL))
+  }
+  
   hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
   lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
   hnum[,"IMGT_numbering_summary"] <-paste0(hnum$imgt_numbering,"(",hnum$VorC,")")
@@ -826,6 +833,9 @@ get_res_info_in_matrix <- function(iden_code,hnumbering,lnumbering,res_info_dir)
 
 plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
   # if_alpha: the column name of the data table (which is defined in this function), can only be NULL or "if_both_interface"
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (ggplot(NULL))
+  }
   
   h_numbering <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
   l_numbering <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
@@ -1281,7 +1291,7 @@ ui <- fluidPage(
                         ),
                         column(5,
                                wellPanel(
-                                 tabsetPanel(
+                                 tabsetPanel(id="struc_seq_viewer",
                                    tabPanel("Structural Viewer",value="Structural_Viewer",
                                             # show the structure viewer
                                             textOutput("struc_selected_message") %>%
@@ -1396,6 +1406,8 @@ server <- function(input,output,session){
     # Update the tabset panel to the "Antibody information" when the user click on search:
     updateTabsetPanel(session, "residue_list_panel",
                       selected = "Antibody information")
+    updateTabsetPanel(session, "struc_seq_viewer",
+                      selected = "Structural_Viewer")
     
     # Show the buttons and select_column options when the user click the search:
     output$ab_info_buttons_ui <- renderUI({
@@ -2109,12 +2121,17 @@ server <- function(input,output,session){
       
     }
     else{
-      js$enableTab("Fab_H-L_contact_map")
+      if (file.exists(paste0(res_info_dir,struc_selected(),"_H_res_info.csv")) && file.exists(paste0(res_info_dir,struc_selected(),"_L_res_info.csv"))){
+        js$enableTab("Fab_H-L_contact_map")
+        js$enableTab("Sequence_numbering")
+        
+      }
+      
       js$enableTab("H-L_interface_residues")
       js$enableTab("Disulfide_Bond")
       js$enableTab("Structural_Viewer")
       js$enableTab("Sequence_Coverage")
-      js$enableTab("Sequence_numbering")
+      
       
     }
   })
@@ -2148,6 +2165,10 @@ server <- function(input,output,session){
     plotData <- int_matrix_plot0$data
     # set the interactive "box" on the plot
     output$matrix_hover_info <- renderUI({
+      if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+        return (NULL)
+      }
+      
       hover <- input$matrix_hover
       #plotData <- int_matrix_plot0$data
       point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
@@ -2184,15 +2205,7 @@ server <- function(input,output,session){
     # Get the strings indicating the PDB positions of brushed residues
     brush <- input$matrix_brush
     
-    this_hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
-    this_lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
-    this_hnum[,"IMGT_numbering_summary"] <-paste0(this_hnum$imgt_numbering,"(",this_hnum$VorC,")")
-    this_lnum[,"IMGT_numbering_summary"] <-paste0(this_lnum$imgt_numbering,"(",this_lnum$VorC,")")
-    names(this_hnum) <- paste0(names(this_hnum),"_H")
-    names(this_lnum) <- paste0(names(this_lnum),"_L")
     
-    this_total_num <- tidyr::crossing(this_hnum,this_lnum)
-    total_residues_info$df<- this_total_num
     
     if (is.null(brush)){
       brushed_all_residues$all <- NULL
@@ -2201,6 +2214,16 @@ server <- function(input,output,session){
       brushed_int_residues$l <- NULL
     }
     else{
+      this_hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+      this_lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+      this_hnum[,"IMGT_numbering_summary"] <-paste0(this_hnum$imgt_numbering,"(",this_hnum$VorC,")")
+      this_lnum[,"IMGT_numbering_summary"] <-paste0(this_lnum$imgt_numbering,"(",this_lnum$VorC,")")
+      names(this_hnum) <- paste0(names(this_hnum),"_H")
+      names(this_lnum) <- paste0(names(this_lnum),"_L")
+      
+      this_total_num <- tidyr::crossing(this_hnum,this_lnum)
+      total_residues_info$df<- this_total_num
+      
       b_point <- brushedPoints(plotData,brush, xvar="hid",yvar="lid")
       
       brushed_residues_df <- merge(x=total_residues_info$df,y=b_point,
@@ -2255,7 +2278,7 @@ server <- function(input,output,session){
     }
     output$download_matrix <- downloadHandler(
       filename=function(){
-        paste0(iden_code,"Fab_contact_map_info",".zip")
+        paste0(iden_code,"_Fab_contact_map_info",".zip")
       },
       content=function(f_name){
         
@@ -2269,9 +2292,13 @@ server <- function(input,output,session){
         matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
         matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
         file.copy(matrix_f_name,matrix_f_name_new)
+        if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+          file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+          file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+        }
         
-        file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
-        file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+        
+        ggsave(paste0(temp_directory,"/",iden_code,"_contact_map_plot.png"), plot = int_matrix_plot0, device = "png")
         
         zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
       },
@@ -2359,7 +2386,7 @@ server <- function(input,output,session){
     hover <- input$numbering_hover
     num_df <- num_df()
     
-    plotData <- num_df[,c("x","y","VorC","region","residue","imgt_numbering")]
+    plotData <- num_df[,c("x","y","VorC","region","res_code","residue","imgt_numbering")]
     plotData <- plotData[complete.cases(plotData),]
     point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
     if (nrow(point) == 0) return(NULL)
