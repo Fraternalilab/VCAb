@@ -20,6 +20,7 @@ from Bio.SubsMat import MatrixInfo as matlist
 import os
 import argparse
 import time
+from collections import Counter
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -688,7 +689,7 @@ def find_alternative_vtype (bl_df,b_all_alleles,b_species,bident,bscore,c_allele
 
 def determine_v_species_type (v_bl, iden_code, o_pdb_species, HorL,c_alleles,cut_off,species_limit=None):
     # v_bl is the df transfered from the json file, including only the top hit for each allele.
-    # o_pdb_species is the original species, c_alleles: collapsed alleles
+    # o_pdb_species is the original PDB species, c_alleles: collapsed alleles
     # c_species: a list contaning the species annotation for both CH1 & CL domain
     # Only use this function when PDB_species and blast_species is different
 
@@ -1569,6 +1570,7 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                 # Can't be humanized:
                 # Re-assign the V domain species
                 c_other_species=[i for i in [a,b] if i != "homo_sapiens"]
+                c_other_species_1=[i.split("_")[0] for i in c_other_species]
 
                 iden_code=df.loc[i,"iden_code"]
                 h_pdb_species=df.loc[i,"H_pdb_species"]
@@ -1582,23 +1584,25 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                 """
                 if "Humanized" in x:
                     vh_other_species=[i for i in x.split(":")[1].split(";") if i != "homo_sapiens"][0]
-                    if vh_other_species in c_other_species:
+                    if (vh_other_species in c_other_species) or (vh_other_species.split("_")[0] in c_other_species_1):
                         df.loc[i,'VH_species']=vh_other_species
 
-                        s_vh_species,s_vh_alleles,s_al_vhtype=determine_v_species_type (vhbl, iden_code, h_pdb_species, "H",c_v_alleles,c_vh,vh_other_species)
+                        h_iden_code=df.loc[i,"H_seq_id"]
+                        s_vh_species,s_vh_alleles,s_al_vhtype=determine_v_species_type (vhbl, h_iden_code, h_pdb_species, "H",c_v_alleles,c_vh,vh_other_species)
                         df.loc[i,"VH_allele"]=s_vh_alleles
                         df.loc[i,"Alternative_VH_allele"]=s_al_vhtype
 
-                        #print (f"vh_species is changed:{iden_code}: from {x} to {vh_other_species}")
+                        print (f"vh_species is changed:{iden_code}: from {x} to {vh_other_species}")
                         x=vh_other_species
 
 
                 if "Humanized" in y:
                     vl_other_species=[i for i in y.split(":")[1].split(";") if i != "homo_sapiens"][0]
-                    if vl_other_species in c_other_species:
+                    if (vl_other_species in c_other_species)  or (vl_other_species.split("_")[0] in c_other_species_1):
                         df.loc[i,'VL_species']=vl_other_species
 
-                        s_vl_species,s_vl_alleles,s_al_vltype=determine_v_species_type (vlbl, iden_code, l_pdb_species, "L",c_v_alleles,c_vl,vl_other_species)
+                        l_iden_code=df.loc[i,"L_seq_id"]
+                        s_vl_species,s_vl_alleles,s_al_vltype=determine_v_species_type (vlbl, l_iden_code, l_pdb_species, "L",c_v_alleles,c_vl,vl_other_species)
                         df.loc[i,"VL_allele"]=s_vl_alleles
                         df.loc[i,"Alternative_VL_allele"]=s_al_vltype
 
@@ -1636,6 +1640,100 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
             species.append(f"ambiguous species: please check the species annotation for domains")
 
     df["Species"]=species
+
+    return df
+
+def further_classify_ambiguous(df,vh_bl,ch_bl,vl_bl,cl_bl):
+    """
+    1. Replace domain species annotation when:
+        1.1. 3/4 domain species are the same (Domain species of four domains: A:A:A:B (3:1));
+        and
+        1.2. In the blast hits for the minority domain, Perc.Ident difference for majority & minority
+        species is <=8.
+    2. Then reassign the species summary annotation if the four domain species annotations are
+    the same after modification
+
+    df: the dataframe after the assignment of both domain species and species summary
+    vh_bl,ch_bl vl_bl,cl_bl: the filtered blast table
+    """
+    #a_df=df.loc[df["Species"]=='ambiguous species: please check the species annotation for domains']
+    df=df.copy()
+    def macaca_domains(df,d_species):
+        # replace the "macaca_fascicularis" with "macaca_mulatta"
+        df[d_species]=["macaca_mulatta" if i=="macaca_fascicularis" else i for i in df[d_species].values]
+    macaca_domains(df,"VH_species")
+    macaca_domains(df,"VL_species")
+    macaca_domains(df,"HC_species")
+    macaca_domains(df,"LC_species")
+
+    for i in df.index:
+        check_if_3= 3 not in Counter(df.loc[i,["VH_species","VL_species","HC_species","LC_species"]].values).values()
+
+        if df.loc[i,"Species"]!='ambiguous species: please check the species annotation for domains' or check_if_3:
+            continue
+            # skip the non_ambiguous ones and the ambiguous ones which doesn't have domain_species 3:1
+
+        iden_code=df.loc[i,"iden_code"]
+
+        vh_s,vl_s,ch_s,cl_s=df.loc[i,["VH_species","VL_species","HC_species","LC_species"]].values
+        domain_species={"vh":vh_s,"vl":vl_s,"ch":ch_s,"cl":cl_s}
+
+        species_count=Counter(domain_species.values())
+        majority_species=list(species_count.keys())[list(species_count.values()).index(3)]
+        minority_species=list(species_count.keys())[list(species_count.values()).index(1)]
+        if "Humanized" in minority_species:
+            continue
+            print (iden_codes)
+
+        minority_domain=list(domain_species.keys())[list(domain_species.values()).index(minority_species)]
+
+        # Extract the blast hits in the minority_domain for the species: majority_species & minority_species
+        bl_dfs={"vh":vh_bl,"vl":vl_bl,"ch":ch_bl,"cl":cl_bl}
+        bl_df=bl_dfs[minority_domain].rename(columns={
+                                                      "ident":"identity",
+                                                      'qseqid':'query_id',
+                                                      'sseqid':'subject_id',
+                                                      'e-value':"evalue"})
+        # CHECK: if this needs to be changed:
+        this_bl_df=bl_df.loc[bl_df["iden_code"]==iden_code]
+        this_bl_df["species"]=[i.lower() for i in this_bl_df["species"].values]
+        #if True:
+        try:
+            major_hit=this_bl_df.loc[this_bl_df["species"]==majority_species].sort_values(by=["identity","evalue","score"],ascending=[False,True,False]).iloc[0,:]
+            minor_hit=this_bl_df.loc[this_bl_df["species"]==minority_species].sort_values(by=["identity","evalue","score"],ascending=[False,True,False]).iloc[0,:]
+
+            major_ident=major_hit["identity"]
+            minor_ident=minor_hit["identity"]
+
+            if abs(major_ident-minor_ident)<=8:
+
+                """
+                replace the minority species with majority species when the Difference in Perc.Ident for
+                the two hits corresponding to these two species is smaller than 8.
+
+                """
+
+                # domain name: VH/VL/HC/LC
+                d_name=minority_domain.upper() if minority_domain[0]=="v" else minority_domain[1].upper()+"C"
+
+                allele=major_hit["subject_id"].split("|")[0]
+                allele_info=f"{majority_species}|{allele}: Per.Ident: {major_ident}"
+                if minority_domain[0]=="c":
+                    chaintype=major_hit["chain_type"]
+                    allele_info=f"{chaintype}({allele_info})"
+
+                df.loc[i,d_name+"_species"]=majority_species
+                df.loc[i,d_name+"_allele"]=allele_info
+                print (f"{iden_code} is changed: domain: {d_name}: from {minority_species} to {majority_species}")
+        except:
+            print ("errors:",iden_code,minority_domain)
+
+        # Change species annotation if four domain species are the same after domain species modification:
+        x,y,a,b=df.loc[i,'VH_species'],df.loc[i,'VL_species'],df.loc[i,'HC_species'],df.loc[i,'LC_species']
+        if len(set([x,y,a,b]))==1:
+            df.loc[i,"Species"]=x.title()
+
+
 
     return df
 
@@ -1794,8 +1892,17 @@ if __name__=="__main__":
     print("adding species")
     # For test:
     #vcab0=pd.read_csv("disul_vcab.csv").drop(columns=["Unnamed: 0"])
-    vcab=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
+    vcab1=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
+    vcab=further_classify_ambiguous(vcab1,flt_vhbl,flt_hbl,flt_vlbl,flt_lbl)
     vcab.to_csv("./vcab.csv")
+
+    # 3. Generate files for the shiny app:
+    # 3.1. Generate POPSComp results
+    print ("Going through POPSComp analysis...")
+    os.chdir("../pops")
+    os.system("sh pops.sh ../pdb_struc/c_pdb/") # PDB structures with C region only are inputted for POPSComp analysis
+    os.system("sh total_pops.sh ../pdb_struc/chain_pdb/")
+    os.chdir("../vcab_db")
 
     # Change this part!!!!
     print ("generating files for shiny app")
@@ -1813,5 +1920,5 @@ if __name__=="__main__":
 
 
 
-    os.system("python cal_angles.py")
-    os.system("python cal_interface_matrix.py")
+    os.system("python cal_angles_new.py")
+    #os.system("python cal_interface_matrix_new.py")
