@@ -828,7 +828,8 @@ def determine_v_species_type (v_bl, iden_code, o_pdb_species, HorL,c_alleles,cut
             nhm_cdr12_match=(nhm_cdr1_match+nhm_cdr2_match)/(len(nhm_cdr1)+len(nhm_cdr2))
 
             if nhm_cdr12_match > hm_cdr12_match:
-                return (f"Humanized:{pdb_species};{bl_species}",f"{pdb_species}|{pdb_alleles}: Per.Ident: {pdb_identity};{bl_species}|{bl_alleles}: Per.Ident: {bl_identity}",bl_alternative_v)
+                #return (f"Humanized:{pdb_species};{bl_species}",f"{pdb_species}|{pdb_alleles}: Per.Ident: {pdb_identity};{bl_species}|{bl_alleles}: Per.Ident: {bl_identity}",bl_alternative_v)
+                return (f"Humanized",f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",bl_alternative_v)
             else:
                 # first_species is human in this case
                 return (first_species,f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",first_species_alternative_v)
@@ -1587,8 +1588,7 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                     if (vh_other_species in c_other_species) or (vh_other_species.split("_")[0] in c_other_species_1):
                         df.loc[i,'VH_species']=vh_other_species
 
-                        h_iden_code=df.loc[i,"H_seq_id"]
-                        s_vh_species,s_vh_alleles,s_al_vhtype=determine_v_species_type (vhbl, h_iden_code, h_pdb_species, "H",c_v_alleles,c_vh,vh_other_species)
+                        s_vh_species,s_vh_alleles,s_al_vhtype=determine_v_species_type (vhbl, iden_code, h_pdb_species, "H",c_v_alleles,c_vh,vh_other_species)
                         df.loc[i,"VH_allele"]=s_vh_alleles
                         df.loc[i,"Alternative_VH_allele"]=s_al_vhtype
 
@@ -1601,8 +1601,7 @@ def assign_species_summary(o_df,vhbl,vlbl,c_v_alleles,c_vh=8,c_vl=8):
                     if (vl_other_species in c_other_species)  or (vl_other_species.split("_")[0] in c_other_species_1):
                         df.loc[i,'VL_species']=vl_other_species
 
-                        l_iden_code=df.loc[i,"L_seq_id"]
-                        s_vl_species,s_vl_alleles,s_al_vltype=determine_v_species_type (vlbl, l_iden_code, l_pdb_species, "L",c_v_alleles,c_vl,vl_other_species)
+                        s_vl_species,s_vl_alleles,s_al_vltype=determine_v_species_type (vlbl, iden_code, l_pdb_species, "L",c_v_alleles,c_vl,vl_other_species)
                         df.loc[i,"VL_allele"]=s_vl_alleles
                         df.loc[i,"Alternative_VL_allele"]=s_al_vltype
 
