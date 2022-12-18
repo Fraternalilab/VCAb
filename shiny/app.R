@@ -933,6 +933,58 @@ get_usr_selected_cnum <- function(iden_code,seqtype){
   
 }
 
+get_paired_repertoire_seq <- function(o_df,row_num,cell_id_col,seq_cols,chainType_col){
+  cell_id=o_df[row_num,cell_id_col]
+  df=o_df[(o_df[[cell_id_col]]==cell_id)&(!(is.na(o_df[[chainType_col]]))),] 
+  # extract the rows with the specified cell_id and non-empty value indicating the chainType(heavy or Light)
+  #df=o_df[(o_df[[cell_id_col]]==cell_id),]
+  
+  if (nrow(df)!=2){
+    return (NULL)
+  }
+  else{
+    # if "IGH" is not in the chainType_col, or if the occurance of "IGH" is not 1
+    if (!("IGH" %in% names(table(df[[chainType_col]]))) ) return (NULL)
+    if (table(df[[chainType_col]])[["IGH"]]!=1) return (NULL)
+    
+    h_info=df[df[[chainType_col]]=="IGH",]
+    l_info=df[df[[chainType_col]]!="IGH",]
+    
+    h_seq=""
+    l_seq=""
+    
+    h_r_num=rownames(h_info)
+    l_r_num=rownames(l_info)
+    
+    for (i in seq_cols){
+      h_seq=paste0(h_seq,h_info[[i]])
+      l_seq=paste0(l_seq,l_info[[i]])
+      
+    }
+    h_seq <- gsub("\\.","",h_seq)
+    h_seq <- gsub("\\*","",h_seq)
+    l_seq <- gsub("\\.","",l_seq)
+    l_seq <- gsub("\\*","",l_seq)
+    
+    return (list("cell_id"=cell_id,"h_seq"=h_seq,"l_seq"=l_seq,"h_row_num"=h_r_num,"l_row_num"=l_r_num))
+    
+  }
+  
+}
+encode_url <- 'shinyjs.encode_url = function(par) {
+                var def_par = {txt: null};
+                par = shinyjs.getParams(par, def_par);
+                if (par.txt!=""){
+                  Shiny.onInputChange("encoded_url",encodeURIComponent(par.txt));
+                }
+
+}'
+decode_url <-'shinyjs.decode_url = function (par){
+                var def_par={txt:""};
+par = shinyjs.getParams(par, def_par);
+Shiny.onInputChange("decoded_url",decodeURIComponent(par.txt))
+}'
+
 ####################### UI #######################
 ui <- fluidPage(
   titlePanel(title=div(img(
@@ -947,6 +999,8 @@ ui <- fluidPage(
     "enable_disable_tabPanel.js", functions = c( "enableTab", "disableTab", "removeTab",
                                                      "disableTabWithoutBackground", "hitButton" )
   ),
+  extendShinyjs(text=encode_url,functions="encode_url"),
+  extendShinyjs(text=decode_url,functions="decode_url"),
   includeCSS( "www/enable_disable_tabPanel.css" ),
   navbarPage("",
              tabPanel("Search",
@@ -1135,7 +1189,44 @@ ui <- fluidPage(
                                                                                  ))
                                                                         #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
                                                                         
-                                                               )
+                                                               ),
+                                                               tabPanel("Repertoire",
+                                                                        fluidRow(
+                                                                          column(3,
+                                                                                 fileInput("up_repertoire","Upload repertoire table"),
+                                                                                 fluidRow(
+                                                                                   column(9,
+                                                                                          tags$head(tags$style(HTML(".not_bold label {font-weight:normal;}"))),
+                                                                                          div(
+                                                                                            textInput("reper_file", "Or input a http address for repertoire file here:", ""),
+                                                                                            class="not_bold"
+                                                                                          )
+                                                                                          
+                                                                                          ),
+                                                                                   column(3,
+                                                                                          br(),br(),
+                                                                                          actionButton("reper_url","Upload")
+                                                                                          )
+                                                                                 ),
+                                                                                 
+                                                                                 
+                                                                                 radioButtons(inputId="reper_format", 
+                                                                                              label="Please select the format of the repertoire file", 
+                                                                                              choices=c("AIRR" = "airr",
+                                                                                                        "Cell ranger" = "cell_ranger",
+                                                                                                        "Customized" = "customized")),
+                                                                                 uiOutput("ui_repertoire_customized")
+                                                                                 
+                                                                                 
+                                                                          ),
+                                                                          column(9,
+                                                                                 DT::dataTableOutput("repertoire_table")
+                                                                                 
+                                                                          )
+                                                                        )
+                                                                        
+                                                                        
+                                                                        )
                                                                
                                                    ),
                                                    
@@ -1383,6 +1474,7 @@ ui <- fluidPage(
 
 ####################### Server #######################
 server <- function(input,output,session){
+  options(shiny.maxRequestSize=30*1024^2) # change the max limit of the uploaded file to 30 MB
   
   observe_helpers(withMathJax = TRUE) # allow the display of the helper message when the user click on the question mark next to some text.
   
@@ -1862,6 +1954,32 @@ server <- function(input,output,session){
       
       
     }
+    else if (tabs_value()=="Repertoire"){
+      if ((is.null(input$up_repertoire)==FALSE)||(length(query)!=0)){
+        # Get the information of the selected repertoire sequence
+        reper_row_num <- reactive(input$repertoire_table_rows_selected)
+        
+        reper_selected_info <- get_paired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$cell_id_col,repertoire$seq_col,repertoire$chainType_col)
+        if (is.null(reper_selected_info)==FALSE){
+          t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region") # the total blast table for VH&VL sequence
+          bl_df <- t_df
+          
+          bl_ab_df <- generate_total_info(bl_df,ns)
+          new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
+          
+          ab_info$ab_info_df <- new_bl_ab_df
+        }
+        else{
+          showModal(modalDialog(title="Select a different sequence", "The sequence you selected has no/multiple matched sequence paired with the one you selected,
+                                please try another sequence in the repertoire"))
+        }
+        
+        
+        }
+      
+      
+      
+    }
     else{
       
       ab_info$ab_info_df <- NULL
@@ -1876,6 +1994,105 @@ server <- function(input,output,session){
       }
     }
     
+  })
+  
+  # Make a interactive UI for the Repertoire panel
+  repertoire <- reactiveValues(table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL)
+  observe({
+    # Query string information:
+    query <- getQueryString()
+    observe({
+      js$encode_url(input$reper_file)
+    })
+    observeEvent(input$reper_url,{
+      
+      if (!(is.null(input$encoded_url))){
+        
+        #new_str=paste0("?reper_file=",input$reper_file)
+        new_str=paste0("?reper_file=",input$encoded_url)
+        updateQueryString(new_str,mode="push")
+       
+      }
+      else{
+          updateQueryString(NULL,mode="push")
+        }
+    })
+    
+    # Read the repertoire table:
+    if ((is.null(input$up_repertoire)==FALSE)||(length(query)!=0)){
+      if (is.null(input$up_repertoire)==FALSE){
+        up_reper <- input$up_repertoire$datapath
+      }
+      if (length(query)!=0){
+        #js$decode_url(query[['reper_file']])
+        up_reper <- query$reper_file
+        
+        }
+      
+      if (input$reper_format=="airr"){
+        reper_table <- airr::read_alignment(up_reper)
+        if(any(is.na(reper_table[["cell_id"]]))){
+          reper_table[,"cell_id"] <- apply(reper_table[,"sequence_id"],1,function(x){strsplit(x,"_")[[1]][1]})
+        }
+        reper_table <- as.data.frame(reper_table)
+        
+        output$ui_repertoire_customized <- renderUI({NULL})
+        
+        repertoire$cell_id_col="cell_id"
+        repertoire$seq_col=c("sequence_alignment_aa")
+        repertoire$chainType_col="locus"
+        
+      }
+      else if (input$reper_format=="cell_ranger"){
+        reper_table <- read.csv(up_reper,row.names = NULL)
+        
+        output$ui_repertoire_customized <- renderUI({NULL})
+        repertoire$cell_id_col="barcode"
+        repertoire$seq_col=c("fwr1","cdr1","fwr2","cdr2","fwr3","cdr3","fwr4")
+        repertoire$chainType_col="chain"
+      }
+      else if (input$reper_format=="customized"){
+        reper_table <- as.data.frame(data.table::fread(up_reper,header=TRUE))
+        output$ui_repertoire_customized <- renderUI({
+          tagList(
+            selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
+                        choices=colnames(reper_table)),
+            selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
+                        choices=colnames(reper_table),multiple=TRUE),
+            selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+                       choices=colnames(reper_table))
+          )
+          #repertoire$cell_id_col=input$repertoire_cell_id_col
+          #print(repertoire$cell_id_col)
+        })
+        observeEvent(input$repertoire_cell_id_col,{
+          repertoire$cell_id_col<-input$repertoire_cell_id_col
+        })
+        observeEvent(input$repertoire_seq_col,{
+          repertoire$seq_col=input$repertoire_seq_col
+        })
+        observeEvent(input$repertoire_chainType_col,{
+          repertoire$chainType_col=input$repertoire_chainType_col
+        })
+        
+      }
+      else{
+        reper_table <- NULL
+      }
+      
+      repertoire$table <- reper_table
+      
+      if (is.null(reper_table)==FALSE){
+        output$repertoire_table <- DT::renderDataTable({
+          DT::datatable(repertoire$table,selection="single",escape=F,
+                        options=list(scrollX = TRUE))
+          #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
+        })
+        
+        
+      }
+      
+    }
   })
   
   # Make the ab_info_df downloadable for users
