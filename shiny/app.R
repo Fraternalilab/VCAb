@@ -934,6 +934,22 @@ get_usr_selected_cnum <- function(iden_code,seqtype){
   
 }
 
+get_unpaired_repertoire_seq <- function (o_df,row_num,seq_cols,chainType_col){
+  df=o_df[row_num,]
+  
+  chaintype=o_df[row_num,chainType_col]
+  ct=ifelse(chaintype=="IGH","H","L")
+  seq=""
+  
+  for (i in seq_cols){
+    seq=paste0(seq,df[[i]])
+  }
+  seq <- gsub("\\.","",seq)
+  seq <- gsub("\\*","",seq)
+  return (list("chainType"=ct,"seq"=seq))
+  
+}
+
 get_paired_repertoire_seq <- function(o_df,row_num,cell_id_col,seq_cols,chainType_col){
   cell_id=o_df[row_num,cell_id_col]
   df=o_df[(o_df[[cell_id_col]]==cell_id)&(!(is.na(o_df[[chainType_col]]))),] 
@@ -1220,6 +1236,11 @@ ui <- fluidPage(
                                                                                               choices=c("AIRR" = "airr",
                                                                                                         "Cell ranger" = "cell_ranger",
                                                                                                         "Customized" = "customized")),
+                                                                                 radioButtons(inputId="reper_search_mode",
+                                                                                              label="Please select the searching mode:",
+                                                                                              choices=c("Paired H-L chains" = "paired",
+                                                                                                        "Unpaired chains" = "unpaired")
+                                                                                              ),
                                                                                  uiOutput("ui_repertoire_customized")
                                                                                  
                                                                                  
@@ -1964,26 +1985,58 @@ server <- function(input,output,session){
         # Get the information of the selected repertoire sequence
         reper_row_num <- reactive(input$repertoire_table_rows_selected)
         
-        reper_selected_info <- get_paired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$cell_id_col,repertoire$seq_col,repertoire$chainType_col)
-        if (is.null(reper_selected_info)==FALSE){
-          row_selected<-c(reper_selected_info$h_row_num,reper_selected_info$l_row_num)
-          repertoire$row_selected <- row_selected[! row_selected %in% reper_row_num()]
-          #print (repertoire$row_selected)
-          t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region") # the total blast table for VH&VL sequence
-          bl_df <- t_df
-          
-          bl_ab_df <- generate_total_info(bl_df,ns)
-          new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
-          
-          ab_info$ab_info_df <- new_bl_ab_df
+        if (input$reper_search_mode=="paired"){
+          # if the searching mode is paired
+          reper_selected_info <- get_paired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$cell_id_col,repertoire$seq_col,repertoire$chainType_col)
+          if (is.null(reper_selected_info)==FALSE){
+            row_selected<-c(reper_selected_info$h_row_num,reper_selected_info$l_row_num)
+            repertoire$row_selected <- row_selected[! row_selected %in% reper_row_num()]
+            #print (repertoire$row_selected)
+            t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region") # the total blast table for VH&VL sequence
+            bl_df <- t_df
+            
+            bl_ab_df <- generate_total_info(bl_df,ns)
+            new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
+            
+            ab_info$ab_info_df <- new_bl_ab_df
+          }
+          else{
+            showModal(modalDialog(title="Select a different sequence", "The sequence you selected has no/multiple matched sequence paired with the one you selected,
+                                  please try another sequence in the repertoire"))
+          }
         }
         else{
-          showModal(modalDialog(title="Select a different sequence", "The sequence you selected has no/multiple matched sequence paired with the one you selected,
-                                please try another sequence in the repertoire"))
+          # if the searching mode is unpaired
+          reper_selected_info <- get_unpaired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$seq_col,repertoire$chainType_col)
+          if (reper_selected_info$seq==""){
+            showModal(modalDialog(title="Select a different sequence", "The entry you selected has no sequence,
+                                  please try another entry in the repertoire"))
+          } else {
+            blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
+            
+            blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir) # return the dataframe of the complete result of the blast
+            if (is.null(blast_df)==FALSE){
+              #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+              VCAb_blast_df <- blast_df
+              
+              # Record the order of the blast result
+              VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
+              
+              bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
+              
+              new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+              rownames(new_bl_ab_df) <- NULL
+              new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
+              
+              ab_info$ab_info_df <- new_bl_ab_df
+            
+          }
         }
         
         
-        }
+        
+        
+        }}
       
       
       
@@ -2033,30 +2086,6 @@ server <- function(input,output,session){
   })
   
   
-  
-  #query <- reactive({
-  #  if (is.null(query_state$state)){
-  #    return (NULL)
-  #  }
-  #  else{
-  #    return (getQueryString())
-  #  }
-  #})
-  
-  # Store the value of the uploaded file
-  #uploaded_repertoire_file <- reactive({
-  #  if (is.null(uploaded_repertoire_file_state$state)){
-  #    repertoire$table=NULL
-  #    return (NULL)
-  #  } else if (uploaded_repertoire_file_state$state=='uploaded'){
-  #    return (input$up_repertoire$datapath)
-  #  }
-  # else{
-  #  repertoire$table=NULL
-  #  return (NULL)
-  #}
-  #})
-  
   total_repertoire_file_state <- reactive({
     if (!(is.null(uploaded_repertoire_file_state$state))){
       return (input$up_repertoire$datapath)
@@ -2067,63 +2096,6 @@ server <- function(input,output,session){
     return (NULL)
     
   })
-  
-  # Store the value of the total path (uploaded file or the uploaded url)
-  
-  #uploaded_repertoire_file <- reactive({
-  #  if (is.null)
-    
-  #  if (is.null(uploaded_repertoire_file_state$state)){
-  #    repertoire$table=NULL
-  #    return (NULL)
-  #  } else if (uploaded_repertoire_file_state$state=='uploaded'){
-  #    
-  #    if (length(query$str)!=0){
-        #js$decode_url(query[['reper_file']])
- #       return (query$str$reper_file)
-        
-        #updateTextInput(session, "reper_file", value = "")
-        
-  #    }
-  #    if (is.null(input$up_repertoire)==FALSE){
-  #      return (input$up_repertoire$datapath)
-  #    }
-     
-      
-      
-  #  } else{
-  #    repertoire$table=NULL
-  #    return (NULL)
-  #  }
-  #})
-  #output$ui_reper_uploaded <- renderUI({
-    #input$reper_url ## Create a dependency with the reset button to clear the fileInput
-  #  input$clear_reper_file  ## Create a dependency with the reset button to clear the fileInput
-    
-  #})
-  
-  # Re_inititalize the path(and everything) for the uploaded repertoire file / url:
-  #observeEvent(input$clear_reper_file,{
-  #  updateTextInput(session, "reper_file", value = "")
-  #  remove_query_string(session,mode = "push")
-  #  #repertoire$path=NULL
-  #  repertoire$table=NULL
-  #  repertoire$cell_id_col=NULL
-  #  repertoire$seq_col=NULL
-  #  repertoire$chainType_col=NULL
-  #  repertoire$row_selected=NULL
-    #repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
-    
- # })
- 
-  #observe({
-    
-  #  if (input$reper_file==""){
-  #    remove_query_string(session,mode = "push")
-  #  }
-  
-  #})
-    
   
   observe({
     # Only change the query string & read new repertoire table when repertoire$path is empty
@@ -2148,19 +2120,8 @@ server <- function(input,output,session){
       
       # Read the repertoire table:
       if (is.null(total_repertoire_file_state())==FALSE){
-      #if ((is.null(uploaded_repertoire_file())==FALSE)||(length(query)!=0)){
-        #if (is.null(uploaded_repertoire_file())==FALSE){
-        #  repertoire$path <- uploaded_repertoire_file()$datapath
-        #}
-        #if (length(query)!=0){
-          #js$decode_url(query[['reper_file']])
-        #  repertoire$path <- query$reper_file
-          
-        #  #updateTextInput(session, "reper_file", value = "")
-          
-        #}
         repertoire$path<-total_repertoire_file_state()
-        #print (repertoire$path)
+        
         if (input$reper_format=="airr"){
           reper_table <- airr::read_alignment(repertoire$path)
           if(any(is.na(reper_table[["cell_id"]]))){
@@ -2298,7 +2259,7 @@ server <- function(input,output,session){
     if (tabs_value()=="PDB" | tabs_value()=="Features"){
       return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
-    else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired")){
+    else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired") | (tabs_value()=="Repertoire" & input$reper_search_mode=="paired") ){
       return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
       #return (names(ab_info$ab_info_df))
     }
