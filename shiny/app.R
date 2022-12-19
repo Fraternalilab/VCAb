@@ -10,6 +10,7 @@ library(seqinr)
 library(shinyBS)
 library(shinyjs)
 library(reticulate)
+library (polished)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/final_vcab.csv"
@@ -965,7 +966,7 @@ get_paired_repertoire_seq <- function(o_df,row_num,cell_id_col,seq_cols,chainTyp
     h_seq <- gsub("\\*","",h_seq)
     l_seq <- gsub("\\.","",l_seq)
     l_seq <- gsub("\\*","",l_seq)
-    
+    message(c(h_r_num,l_r_num))
     return (list("cell_id"=cell_id,"h_seq"=h_seq,"l_seq"=l_seq,"h_row_num"=h_r_num,"l_row_num"=l_r_num))
     
   }
@@ -1193,7 +1194,10 @@ ui <- fluidPage(
                                                                tabPanel("Repertoire",
                                                                         fluidRow(
                                                                           column(3,
-                                                                                 fileInput("up_repertoire","Upload repertoire table"),
+                                                                                 #uiOutput("ui_reper_uploaded"),
+                                                                                 fileInput("up_repertoire","Upload repertoire table",
+                                                                                           accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv")),
+                                                                                 
                                                                                  fluidRow(
                                                                                    column(9,
                                                                                           tags$head(tags$style(HTML(".not_bold label {font-weight:normal;}"))),
@@ -1208,6 +1212,7 @@ ui <- fluidPage(
                                                                                           actionButton("reper_url","Upload")
                                                                                           )
                                                                                  ),
+                                                                                 actionButton("clear_reper_file","Clear uploaded repertoire file/url"),
                                                                                  
                                                                                  
                                                                                  radioButtons(inputId="reper_format", 
@@ -1955,12 +1960,15 @@ server <- function(input,output,session){
       
     }
     else if (tabs_value()=="Repertoire"){
-      if ((is.null(input$up_repertoire)==FALSE)||(length(query)!=0)){
+      if ((is.null(repertoire$table)==FALSE)){
         # Get the information of the selected repertoire sequence
         reper_row_num <- reactive(input$repertoire_table_rows_selected)
         
         reper_selected_info <- get_paired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$cell_id_col,repertoire$seq_col,repertoire$chainType_col)
         if (is.null(reper_selected_info)==FALSE){
+          row_selected<-c(reper_selected_info$h_row_num,reper_selected_info$l_row_num)
+          repertoire$row_selected <- row_selected[! row_selected %in% reper_row_num()]
+          #print (repertoire$row_selected)
           t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region") # the total blast table for VH&VL sequence
           bl_df <- t_df
           
@@ -1997,103 +2005,246 @@ server <- function(input,output,session){
   })
   
   # Make a interactive UI for the Repertoire panel
-  repertoire <- reactiveValues(table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL)
-  observe({
-    # Query string information:
-    query <- getQueryString()
-    observe({
-      js$encode_url(input$reper_file)
-    })
-    observeEvent(input$reper_url,{
-      
-      if (!(is.null(input$encoded_url))){
-        
-        #new_str=paste0("?reper_file=",input$reper_file)
-        new_str=paste0("?reper_file=",input$encoded_url)
-        updateQueryString(new_str,mode="push")
-       
-      }
-      else{
-          updateQueryString(NULL,mode="push")
-        }
-    })
-    
-    # Read the repertoire table:
-    if ((is.null(input$up_repertoire)==FALSE)||(length(query)!=0)){
-      if (is.null(input$up_repertoire)==FALSE){
-        up_reper <- input$up_repertoire$datapath
-      }
-      if (length(query)!=0){
-        #js$decode_url(query[['reper_file']])
-        up_reper <- query$reper_file
-        
-        }
-      
-      if (input$reper_format=="airr"){
-        reper_table <- airr::read_alignment(up_reper)
-        if(any(is.na(reper_table[["cell_id"]]))){
-          reper_table[,"cell_id"] <- apply(reper_table[,"sequence_id"],1,function(x){strsplit(x,"_")[[1]][1]})
-        }
-        reper_table <- as.data.frame(reper_table)
-        
-        output$ui_repertoire_customized <- renderUI({NULL})
-        
-        repertoire$cell_id_col="cell_id"
-        repertoire$seq_col=c("sequence_alignment_aa")
-        repertoire$chainType_col="locus"
-        
-      }
-      else if (input$reper_format=="cell_ranger"){
-        reper_table <- read.csv(up_reper,row.names = NULL)
-        
-        output$ui_repertoire_customized <- renderUI({NULL})
-        repertoire$cell_id_col="barcode"
-        repertoire$seq_col=c("fwr1","cdr1","fwr2","cdr2","fwr3","cdr3","fwr4")
-        repertoire$chainType_col="chain"
-      }
-      else if (input$reper_format=="customized"){
-        reper_table <- as.data.frame(data.table::fread(up_reper,header=TRUE))
-        output$ui_repertoire_customized <- renderUI({
-          tagList(
-            selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
-                        choices=colnames(reper_table)),
-            selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
-                        choices=colnames(reper_table),multiple=TRUE),
-            selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
-                       choices=colnames(reper_table))
-          )
-          #repertoire$cell_id_col=input$repertoire_cell_id_col
-          #print(repertoire$cell_id_col)
-        })
-        observeEvent(input$repertoire_cell_id_col,{
-          repertoire$cell_id_col<-input$repertoire_cell_id_col
-        })
-        observeEvent(input$repertoire_seq_col,{
-          repertoire$seq_col=input$repertoire_seq_col
-        })
-        observeEvent(input$repertoire_chainType_col,{
-          repertoire$chainType_col=input$repertoire_chainType_col
-        })
-        
-      }
-      else{
-        reper_table <- NULL
-      }
-      
-      repertoire$table <- reper_table
-      
-      if (is.null(reper_table)==FALSE){
-        output$repertoire_table <- DT::renderDataTable({
-          DT::datatable(repertoire$table,selection="single",escape=F,
-                        options=list(scrollX = TRUE))
-          #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
-        })
-        
-        
-      }
-      
+  repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
+  query_state <- reactiveValues(state=NULL)
+  observeEvent(input$reper_url,{
+    if (input$reper_file!=""){
+      query_state$state <- 'uploaded'
+    }
+    else{
+      query_state$state <- NULL
     }
   })
+  observeEvent(input$clear_reper_file,{
+    query_state$state <- NULL
+  })
+  
+  uploaded_repertoire_file_state <- reactiveValues(state=NULL) # Store the state of uploaded repertoire file
+  observeEvent(input$up_repertoire,{
+    uploaded_repertoire_file_state$state <- 'uploaded'
+  })
+  
+  
+  observeEvent(input$clear_reper_file,{
+    uploaded_repertoire_file_state$state <- NULL
+    updateTextInput(session, "reper_file", value = "")
+    remove_query_string(session,mode = "push")
+    repertoire$table <- NULL
+  })
+  
+  
+  
+  #query <- reactive({
+  #  if (is.null(query_state$state)){
+  #    return (NULL)
+  #  }
+  #  else{
+  #    return (getQueryString())
+  #  }
+  #})
+  
+  # Store the value of the uploaded file
+  #uploaded_repertoire_file <- reactive({
+  #  if (is.null(uploaded_repertoire_file_state$state)){
+  #    repertoire$table=NULL
+  #    return (NULL)
+  #  } else if (uploaded_repertoire_file_state$state=='uploaded'){
+  #    return (input$up_repertoire$datapath)
+  #  }
+  # else{
+  #  repertoire$table=NULL
+  #  return (NULL)
+  #}
+  #})
+  
+  total_repertoire_file_state <- reactive({
+    if (!(is.null(uploaded_repertoire_file_state$state))){
+      return (input$up_repertoire$datapath)
+    }
+    if (!(is.null(query_state$state))){
+      return (getQueryString())
+    }
+    return (NULL)
+    
+  })
+  
+  # Store the value of the total path (uploaded file or the uploaded url)
+  
+  #uploaded_repertoire_file <- reactive({
+  #  if (is.null)
+    
+  #  if (is.null(uploaded_repertoire_file_state$state)){
+  #    repertoire$table=NULL
+  #    return (NULL)
+  #  } else if (uploaded_repertoire_file_state$state=='uploaded'){
+  #    
+  #    if (length(query$str)!=0){
+        #js$decode_url(query[['reper_file']])
+ #       return (query$str$reper_file)
+        
+        #updateTextInput(session, "reper_file", value = "")
+        
+  #    }
+  #    if (is.null(input$up_repertoire)==FALSE){
+  #      return (input$up_repertoire$datapath)
+  #    }
+     
+      
+      
+  #  } else{
+  #    repertoire$table=NULL
+  #    return (NULL)
+  #  }
+  #})
+  #output$ui_reper_uploaded <- renderUI({
+    #input$reper_url ## Create a dependency with the reset button to clear the fileInput
+  #  input$clear_reper_file  ## Create a dependency with the reset button to clear the fileInput
+    
+  #})
+  
+  # Re_inititalize the path(and everything) for the uploaded repertoire file / url:
+  #observeEvent(input$clear_reper_file,{
+  #  updateTextInput(session, "reper_file", value = "")
+  #  remove_query_string(session,mode = "push")
+  #  #repertoire$path=NULL
+  #  repertoire$table=NULL
+  #  repertoire$cell_id_col=NULL
+  #  repertoire$seq_col=NULL
+  #  repertoire$chainType_col=NULL
+  #  repertoire$row_selected=NULL
+    #repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
+    
+ # })
+ 
+  #observe({
+    
+  #  if (input$reper_file==""){
+  #    remove_query_string(session,mode = "push")
+  #  }
+  
+  #})
+    
+  
+  observe({
+    # Only change the query string & read new repertoire table when repertoire$path is empty
+    #if (is.null(repertoire$path)){
+      # Update the query string information when the "upload url" button is clicked:
+      
+      observe({
+        js$encode_url(input$reper_file)
+      })
+      observeEvent(input$reper_url,{
+        if (!(is.null(input$encoded_url))){
+          
+          #new_str=paste0("?reper_file=",input$reper_file)
+          new_str=paste0("?reper_file=",input$encoded_url)
+          updateQueryString(new_str,mode="push")
+          
+        }
+        else{
+          remove_query_string(session,mode = "push")
+        }
+      })
+      
+      # Read the repertoire table:
+      if (is.null(total_repertoire_file_state())==FALSE){
+      #if ((is.null(uploaded_repertoire_file())==FALSE)||(length(query)!=0)){
+        #if (is.null(uploaded_repertoire_file())==FALSE){
+        #  repertoire$path <- uploaded_repertoire_file()$datapath
+        #}
+        #if (length(query)!=0){
+          #js$decode_url(query[['reper_file']])
+        #  repertoire$path <- query$reper_file
+          
+        #  #updateTextInput(session, "reper_file", value = "")
+          
+        #}
+        repertoire$path<-total_repertoire_file_state()
+        #print (repertoire$path)
+        if (input$reper_format=="airr"){
+          reper_table <- airr::read_alignment(repertoire$path)
+          if(any(is.na(reper_table[["cell_id"]]))){
+            reper_table[,"cell_id"] <- apply(reper_table[,"sequence_id"],1,function(x){strsplit(x,"_")[[1]][1]})
+          }
+          reper_table <- as.data.frame(reper_table)
+          
+          output$ui_repertoire_customized <- renderUI({NULL})
+          
+          repertoire$cell_id_col="cell_id"
+          repertoire$seq_col=c("sequence_alignment_aa")
+          repertoire$chainType_col="locus"
+          
+        }
+        else if (input$reper_format=="cell_ranger"){
+          reper_table <- read.csv(repertoire$path,row.names = NULL)
+          
+          output$ui_repertoire_customized <- renderUI({NULL})
+          repertoire$cell_id_col="barcode"
+          repertoire$seq_col=c("fwr1","cdr1","fwr2","cdr2","fwr3","cdr3","fwr4")
+          repertoire$chainType_col="chain"
+        }
+        else if (input$reper_format=="customized"){
+          reper_table <- as.data.frame(data.table::fread(repertoire$path,header=TRUE))
+          output$ui_repertoire_customized <- renderUI({
+            tagList(
+              selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
+                          choices=colnames(reper_table)),
+              selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
+                          choices=colnames(reper_table),multiple=TRUE),
+              selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+                          choices=colnames(reper_table))
+            )
+            #repertoire$cell_id_col=input$repertoire_cell_id_col
+            #print(repertoire$cell_id_col)
+          })
+          observeEvent(input$repertoire_cell_id_col,{
+            repertoire$cell_id_col<-input$repertoire_cell_id_col
+          })
+          observeEvent(input$repertoire_seq_col,{
+            repertoire$seq_col=input$repertoire_seq_col
+          })
+          observeEvent(input$repertoire_chainType_col,{
+            repertoire$chainType_col=input$repertoire_chainType_col
+          })
+          
+        }
+        else{
+          reper_table <- NULL
+        }
+        
+        repertoire$table <- reper_table
+      
+    }
+    
+      
+      
+      
+    #}
+    
+    if (is.null(repertoire$table)==FALSE){
+      #  observeEvent(input$repertoire_table_rows_selected,{
+      
+      #  })
+      #color_by_row <-rownames(repertoire$table)
+      
+      #color_value <- ifelse(color_by_row %in% repertoire$row_selected,"blue","") 
+      #color_value <- ifelse(color_by_row == "AAGGAGCAGTCTCGGC-1_contig_1","orange","")
+      output$repertoire_table <- DT::renderDataTable({
+        DT::datatable(repertoire$table,selection="single",escape=F,
+                      options=list(scrollX = TRUE)) #%>%
+        #formatStyle(0,target="row",backgroundColor = styleEqual(NULL,"orange"))
+        #formatStyle(0,target="row",backgroundColor = styleEqual(color_by_row,color_value))
+        #`if`(!(is.null(repertoire$row_selected)),formatStyle(0,target="row",backgroundColor = styleEqual(repertoire$row_selected,"orange")),.)
+        
+        #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
+      })
+      
+      
+    }
+    
+    
+  })
+  
   
   # Make the ab_info_df downloadable for users
   
