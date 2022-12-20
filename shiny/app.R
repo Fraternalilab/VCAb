@@ -13,7 +13,7 @@ library(reticulate)
 library (polished)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/result/final_vcab.csv"
+vcab_dir="../vcab_db/result/vcab_shiny.csv"
 pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
@@ -52,15 +52,10 @@ mtrix_dir="../ch1_cl_interface_matrix/complete_matrix/"
 res_info_dir="../res_info/"
 
 # Files required to display the numbering function
-vh_num_dir="../vcab_db/result/num_result/vnumbering_H.csv"
-vl_num_dir="../vcab_db/result/num_result/vnumbering_KL.csv"
+vh_num_dir="../vcab_db/result/num_result/vnumbering_H_shiny.csv"
+vl_num_dir="../vcab_db/result/num_result/vnumbering_KL_shiny.csv"
 ch_num_dir="../vcab_db/result/num_result/cnumbering_H_C1.csv"
 cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
-
-vh_num=read.csv(vh_num_dir, row.names = 1)
-vl_num=read.csv(vl_num_dir, row.names = 1)
-ch_num=read.csv(ch_num_dir)
-cl_num=read.csv(cl_num_dir)
 
 #### NOTE: this part should be changed on server #########
 # Things needed to number the user-inputted sequence
@@ -90,20 +85,9 @@ t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
-o_vcab=o_vcab[,!(names(o_vcab) %in% c("X","vh_species_hmm","vl_species_hmm"))]
-# Read the unusual case csv
-#all_unusual_cases = read.csv(file = '../vcab_db/unusual_cases/all_unusual_cases.csv')
-#all_unusual_cases = all_unusual_cases[, 3:ncol(all_unusual_cases)]
-
 # Round some values to two digit in order to make the table looks better:
 vcab=o_vcab
-colnames(vcab)[which(names(vcab) == "elbow_angle")] <- "elbow_angle0"
-vcab$elbow_angle <- unlist(lapply(vcab$elbow_angle0,function(x){round(x,2)}))
-vcab$CH1_CL.interface_angle <- unlist(lapply(vcab$CH1.CL_interface_angle,function(x){round(x,2)}))
-vcab=vcab[,!(names(vcab) %in% c("X","CH1.CL_interface_angle","elbow_angle0"))] 
-
 #Note: the positions of seqs:33:36
-##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 update_date_fn="../vcab_db/VCAb_db_update_date.txt"
 update_date=readChar(update_date_fn, file.info(update_date_fn)$size)
 
@@ -1008,8 +992,8 @@ ui <- fluidPage(
     src="./VCAb_logo.png",
     width = 270, height = 80
   ),
-  "V and C region bearing Antibody Database"),
-  windowTitle = "VCAb antibody database"),
+  "V and C region bearing Antibody Web Interface"),
+  windowTitle = "VCAb antibody application"),
   tags$em(paste0("Last updated: ",update_date)),
   useShinyjs(),
   extendShinyjs(
@@ -3175,16 +3159,19 @@ server <- function(input,output,session){
   })
   
   # when query_string contains tab, jump to the tab
-  if (!(is.null(query_state$state))){
-    query <- getQueryString()
-    if (!(is.null(query[["tab"]]))){
-      updateTabsetPanel(session, "Search",
-                        selected = query[["tab"]])
+  observe({
+    if (!(is.null(query_state$state))){
+      query <- getQueryString()
+      if (!(is.null(query[["tab"]]))){
+        updateTabsetPanel(session, "Search",
+                          selected = query[["tab"]])
+      }
+      if (!(is.null(query[["mode"]]))){
+        updateRadioButtons(session,"reper_format",selected=query[["format"]])
+      }
     }
-    if (!(is.null(query[["mode"]]))){
-      updateRadioButtons(session,"reper_format",selected=query[["format"]])
-    }
-  }
+  })
+  
   
   
   ###### Statistics ############################################################################################
@@ -3269,6 +3256,11 @@ server <- function(input,output,session){
       
       temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
       dir.create(temp_directory)
+      
+      vh_num=read.csv(vh_num_dir, row.names = 1)
+      vl_num=read.csv(vl_num_dir, row.names = 1)
+      ch_num=read.csv(ch_num_dir)
+      cl_num=read.csv(cl_num_dir)
       
       vhnum=vh_num[unlist(lapply(vh_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vh_num) %in% c("X","hmm_species"))]
       vlnum=vl_num[unlist(lapply(vl_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vl_num) %in% c("X","hmm_species"))]
