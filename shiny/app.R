@@ -1211,7 +1211,9 @@ ui <- fluidPage(
                                                                         fluidRow(
                                                                           column(3,
                                                                                  #uiOutput("ui_reper_uploaded"),
-                                                                                 fileInput("up_repertoire","Upload repertoire table",
+                                                                                 #h3("Upload repertoire table"),
+                                                                                 fileInput("up_repertoire",
+                                                                                           label="Upload repertoire table",
                                                                                            accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv")),
                                                                                  
                                                                                  fluidRow(
@@ -1236,10 +1238,21 @@ ui <- fluidPage(
                                                                                               choices=c("AIRR" = "airr",
                                                                                                         "Cell ranger" = "cell_ranger",
                                                                                                         "Customized" = "customized")),
+                                                                                 helpText("Load the example file for different format:",
+                                                                                          br(),
+                                                                                          actionLink(inputId = "ex_airr_reper_file",
+                                                                                                     label="AIRR example"),br(),
+                                                                                          actionLink(inputId = "ex_cranger_reper_file",
+                                                                                                     label="Cell ranger example"),br(),
+                                                                                          actionLink(inputId = "ex_cus_reper_file",
+                                                                                                     label="customized repertoire file"),br()
+                                                                                          ),
+                                                                                 
+                                                                                 
                                                                                  radioButtons(inputId="reper_search_mode",
                                                                                               label="Please select the searching mode:",
-                                                                                              choices=c("Paired H-L chains" = "paired",
-                                                                                                        "Unpaired chains" = "unpaired")
+                                                                                              choices=c("Unpaired chains" = "unpaired",
+                                                                                                        "Paired H-L chains" = "paired")
                                                                                               ),
                                                                                  uiOutput("ui_repertoire_customized")
                                                                                  
@@ -2082,20 +2095,50 @@ server <- function(input,output,session){
     uploaded_repertoire_file_state$state <- NULL
     updateTextInput(session, "reper_file", value = "")
     remove_query_string(session,mode = "push")
+    #input$ex_cus_reper_file <- NULL
     repertoire$table <- NULL
   })
-  
-  
+  # Set the state for example files
+  example_reper_state <- reactiveValues(cus=NULL,airr=NULL,cranger=NULL)
+  observeEvent(input$ex_airr_reper_file,{example_reper_state$airr <- "uploaded"})
+  observeEvent(input$ex_cranger_reper_file,{example_reper_state$cranger <- "uploaded"})
+  observeEvent(input$ex_cus_reper_file,{example_reper_state$cus <- "uploaded"})
+  observeEvent(input$clear_reper_file,{
+    example_reper_state$cus <- NULL
+    example_reper_state$airr <- NULL
+    example_reper_state$cranger <- NULL
+    })
+  # Return the value for the path of the uploaded file/url/example_files
   total_repertoire_file_state <- reactive({
     if (!(is.null(uploaded_repertoire_file_state$state))){
       return (input$up_repertoire$datapath)
     }
     if (!(is.null(query_state$state))){
-      return (getQueryString())
+      return (getQueryString()[["reper_file"]])
     }
+    
+    #  only load example file when no repertoire file/link is uploaded
+    if (is.null(uploaded_repertoire_file_state$state) && is.null(query_state$state)){
+      if (!(is.null(example_reper_state$cus)) && !(is.null(input$ex_cus_reper_file)) && input$ex_cus_reper_file>0){
+        #updateSelectInput(session,"repertoire_seq_col",selected=c("AA_seq"))
+        updateRadioButtons(session,"reper_format",selected="customized")
+        return ("example_repertoire/sample_repertoire.txt")
+      }
+      if (!(is.null(example_reper_state$airr)) && !(is.null(input$ex_airr_reper_file)) && input$ex_airr_reper_file>0){
+        updateRadioButtons(session,"reper_format",selected="airr")
+        return ("example_repertoire/King_BCP003_vquest_airr.tsv")
+      }
+      if (!(is.null(example_reper_state$cranger)) && !(is.null(input$ex_cranger_reper_file)) && input$ex_cranger_reper_file>0){
+        updateRadioButtons(session,"reper_format",selected="cell_ranger")
+        return ("example_repertoire/MathewEtAl_Sample11_filtered_contig_annotations.csv")
+      }
+      
+    }
+    
     return (NULL)
     
   })
+  
   
   observe({
     # Only change the query string & read new repertoire table when repertoire$path is empty
@@ -2146,18 +2189,32 @@ server <- function(input,output,session){
         }
         else if (input$reper_format=="customized"){
           reper_table <- as.data.frame(data.table::fread(repertoire$path,header=TRUE))
-          output$ui_repertoire_customized <- renderUI({
-            tagList(
-              selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
-                          choices=colnames(reper_table)),
-              selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
-                          choices=colnames(reper_table),multiple=TRUE),
-              selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
-                          choices=colnames(reper_table))
-            )
-            #repertoire$cell_id_col=input$repertoire_cell_id_col
-            #print(repertoire$cell_id_col)
-          })
+          if (input$reper_search_mode=="paired"){
+            output$ui_repertoire_customized <- renderUI({
+              tagList(
+                selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
+                            choices=colnames(reper_table)),
+                selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
+                            choices=colnames(reper_table),multiple=TRUE),
+                selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+                            choices=colnames(reper_table))
+              )
+              
+            })
+          }else{
+            output$ui_repertoire_customized <- renderUI({
+              tagList(
+                selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
+                            choices=colnames(reper_table),multiple=TRUE),
+                selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+                            choices=colnames(reper_table))
+              )
+              
+            })
+            
+          }
+          
+          
           observeEvent(input$repertoire_cell_id_col,{
             repertoire$cell_id_col<-input$repertoire_cell_id_col
           })
@@ -3050,6 +3107,7 @@ server <- function(input,output,session){
   
   
   ### Initialize everything when new tabs are clicked ############################################################################################
+  
   # When different tabs are clicked, initialize everything in the other three panels
   initialize_everything <- function(){
     # The ab_info panel:
@@ -3115,6 +3173,18 @@ server <- function(input,output,session){
     updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
     
   })
+  
+  # when query_string contains tab, jump to the tab
+  if (!(is.null(query_state$state))){
+    query <- getQueryString()
+    if (!(is.null(query[["tab"]]))){
+      updateTabsetPanel(session, "Search",
+                        selected = query[["tab"]])
+    }
+    if (!(is.null(query[["mode"]]))){
+      updateRadioButtons(session,"reper_format",selected=query[["format"]])
+    }
+  }
   
   
   ###### Statistics ############################################################################################
