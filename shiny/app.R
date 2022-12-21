@@ -1273,7 +1273,8 @@ ui <- fluidPage(
                                                                                                         "Paired H-L chains" = "paired")
                                                                                               ),
                                                                                  uiOutput("ui_repertoire_customized_cell_id"),
-                                                                                 uiOutput("ui_repertoire_customized")
+                                                                                 uiOutput("ui_repertoire_customized"),
+                                                                                 HTML("<b> Please select one entry (by clicking the row of the table) of the uploaded repertoire file to start search </b>")
                                                                                  
                                                                                  
                                                                           ),
