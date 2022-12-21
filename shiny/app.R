@@ -324,19 +324,20 @@ filter_the_rows <- function (species,iso_txt,Ltype_txt,struc_cov,exp_method,res_
   
   # all the inputs of this function are the input: e.g. iso_txt should be in this format: input$iso_txt
   chain_type_filter <- function(col_name,user_input){
-    if (user_input=="All") TRUE else unlist(lapply(df[[col_name]],function(x){strsplit(x,"\\(")[[1]][1]==user_input}))
+    #if (is.null(user_input)) return TRUE
+    if ((is.null(user_input)) || (user_input=="All")) TRUE else unlist(lapply(df[[col_name]],function(x){strsplit(x,"\\(")[[1]][1]==user_input}))
   }
   select_filter <- function(check_col_name,select_input_value){
     # check_col_name: the name of the column in the table to be checked / the column which serves as the filter standard
     # o_select_input_value: the value inputted by the user, e.g. input$iso_txt
-    if(select_input_value=="All") TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
+    if((is.null(select_input_value)) || (select_input_value=="All")) TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
   }
   
   antigen_filter <- function(){
-    if (if_antigen=="Any") TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
+    if ((is.null(if_antigen))||(if_antigen=="Any")) TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
   }
   first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Species",species)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
-  final_filter <- if (is.na(res_cut)) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
+  final_filter <- if ((is.null(res_cut)) || (is.na(res_cut))) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
   
   return (final_filter)
 }
@@ -1129,21 +1130,42 @@ ui <- fluidPage(
                                                                                              
                                                                                     ),
                                                                                     tabPanel("Search in batch",
-                                                                                             fileInput("upload","Upload a fasta file (200 seqs max)"),
-                                                                                             radioButtons(inputId="up_paired", label=" Sequences inside the uploaded file are: ",
-                                                                                                          choices=c(
-                                                                                                            "paired H and L chains" = "paired",
-                                                                                                            "not-paired chains" = "unpaired"
-                                                                                                          )) %>%
-                                                                                               helper(type="inline",title="What is paired H & L chain?",
-                                                                                                      content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
-                                                                                                                "",
-                                                                                                                "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
-                                                                                                                "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
-                                                                                                                "AntibodyName and HorL are connected by a hyphen.",
-                                                                                                                "",
-                                                                                                                "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                                                "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table."))
+                                                                                             fluidRow(
+                                                                                               column(4,
+                                                                                                      uiOutput("ui_up_fasta"),
+                                                                                                      #fileInput("upload","Upload a fasta file (200 seqs max)"),
+                                                                                                      helpText("Load the example fasta file of different format:",
+                                                                                                               br(),
+                                                                                                               actionLink(inputId = "ex_unpaired_seq",
+                                                                                                                          label="Example of unpaired sequence"),br(),
+                                                                                                               actionLink(inputId = "ex_paired_seq",
+                                                                                                                          label="Example of paired sequence"),br()
+                                                                                                      ),
+                                                                                                      actionButton("clear_up_fasta","Clear uploaded file"),
+                                                                                                      radioButtons(inputId="up_paired", 
+                                                                                                                   label=helper(
+                                                                                                                     shiny_tag = "Sequences inside the uploaded file are:",color="royalblue2",
+                                                                                                                     type="inline",title="What is paired H & L chain?",
+                                                                                                                     content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
+                                                                                                                               "",
+                                                                                                                               "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
+                                                                                                                               "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
+                                                                                                                               "AntibodyName and HorL are connected by a hyphen.",
+                                                                                                                               "",
+                                                                                                                               "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                               "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table.")
+                                                                                                                   ),
+                                                                                                                   
+                                                                                                                   choices=c(
+                                                                                                                     "not-paired chains" = "unpaired",
+                                                                                                                     "paired H and L chains" = "paired"
+                                                                                                                   )) 
+                                                                                                      ),
+                                                                                               column(8,
+                                                                                                      verbatimTextOutput("up_ex_fasta")
+                                                                                                      )
+                                                                                             )
+                                                                                             
                                                                                              
                                                                                     )),
                                                                         
@@ -1194,11 +1216,11 @@ ui <- fluidPage(
                                                                tabPanel("Repertoire",
                                                                         fluidRow(
                                                                           column(3,
-                                                                                 #uiOutput("ui_reper_uploaded"),
+                                                                                 uiOutput("ui_reper_uploaded"),
                                                                                  #h3("Upload repertoire table"),
-                                                                                 fileInput("up_repertoire",
-                                                                                           label="Upload repertoire table",
-                                                                                           accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv")),
+                                                                                 #fileInput("up_repertoire",
+                                                                                 #          label="Upload repertoire table",
+                                                                                 #          accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv")),
                                                                                  
                                                                                  fluidRow(
                                                                                    column(9,
@@ -1214,14 +1236,6 @@ ui <- fluidPage(
                                                                                           actionButton("reper_url","Upload")
                                                                                           )
                                                                                  ),
-                                                                                 actionButton("clear_reper_file","Clear uploaded repertoire file/url"),
-                                                                                 
-                                                                                 
-                                                                                 radioButtons(inputId="reper_format", 
-                                                                                              label="Please select the format of the repertoire file", 
-                                                                                              choices=c("AIRR" = "airr",
-                                                                                                        "Cell ranger" = "cell_ranger",
-                                                                                                        "Customized" = "customized")),
                                                                                  helpText("Load the example file for different format:",
                                                                                           br(),
                                                                                           actionLink(inputId = "ex_airr_reper_file",
@@ -1230,14 +1244,35 @@ ui <- fluidPage(
                                                                                                      label="Cell ranger example"),br(),
                                                                                           actionLink(inputId = "ex_cus_reper_file",
                                                                                                      label="customized repertoire file"),br()
-                                                                                          ),
+                                                                                 ),
+                                                                                 actionButton("clear_reper_file","Clear uploaded repertoire file/url"),
+                                                                                 
+                                                                                 radioButtons(inputId="reper_format", 
+                                                                                              label="Please select the format of the repertoire file", 
+                                                                                              choices=c("AIRR" = "airr",
+                                                                                                        "Cell ranger" = "cell_ranger",
+                                                                                                        "Customized" = "customized")),
+                                                                                 
                                                                                  
                                                                                  
                                                                                  radioButtons(inputId="reper_search_mode",
-                                                                                              label="Please select the searching mode:",
+                                                                                              label=helper(
+                                                                                                shiny_tag="Please select the searching mode: r",color="royalblue2",
+                                                                                                type="inline", title="Selection of the searching mode",
+                                                                                                content=HTML(
+                                                                                                  "<b> Unpaired chains: </b><br>
+                                                                                                  The structural hits would be ranked by the percentage identity of the selected chain only. <br><br>
+                                                                                                  <b> Paired H-L chains: </b><br>
+                                                                                                  The program will first find the other paired heavy/light chain, indicated by bearing the same cell_id/barcode,
+                                                                                                  then the structural hits is given by considering both the percentage identity of heavy and light chain.
+                                                                                                  
+                                                                                                  "
+                                                                                                )
+                                                                                              ),
                                                                                               choices=c("Unpaired chains" = "unpaired",
                                                                                                         "Paired H-L chains" = "paired")
                                                                                               ),
+                                                                                 uiOutput("ui_repertoire_customized_cell_id"),
                                                                                  uiOutput("ui_repertoire_customized")
                                                                                  
                                                                                  
@@ -1306,55 +1341,12 @@ ui <- fluidPage(
                                                       
                                                       br(),
                                                       #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
-                                                      conditionalPanel(#condition="input.filter_result==1",
-                                                        condition="input.tabs==\"Sequence\" ",
-                                                        # The following options are the same as the "Features" tab:
-                                                        hr(),
-                                                        
-                                                        column(5,
-                                                               strong ("Filter the results by features:"),
-                                                               br(),br(),
-                                                               selectInput("flt_species","Species:",choices=c("All",unique(vcab$Species))) %>%
-                                                                 helper(type="inline",title="Species",
-                                                                        content=c("Species annotation for the antibody")),
-                                                               selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
-                                                                 helper(type="inline",title="Isotype", 
-                                                                        content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                                                  "Each isotype has different function.")),
-                                                               
-                                                               selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
-                                                                 helper(type="inline",title="Light chain type", 
-                                                                        content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                                               selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                                                 helper(type="inline", title="Structural Coverage",
-                                                                        content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                                                  "Full antibody covers both Fab and Fc region"))
-                                                        ),
-                                                        column(5, offset=2,
-                                                               
-                                                               selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                                                 helper(type="inline",title="If has antigen",
-                                                                        content=c("If the pdb file of this entry containing the antigen chain",
-                                                                                  "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
-                                                                                  "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                                                  "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                                               selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                                                 helper(type="inline",title="Experimental Method",
-                                                                        content=c("The experimental method used to acquire the structure.")),
-                                                               numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                                                 helper(type="inline",title="Resolution Threshold",
-                                                                        content=c("This is used to acquire structures with resolution below the threshold.",
-                                                                                  "The threshold can be set to value from 1 to 5.")),
-                                                               actionButton("filter","Filter")
-                                                               # Just empty the input to allow the user to select ab without the limit of resolution.
-                                                        )
-                                                        
-                                                        
-                                                      ),
+                                                      uiOutput("ui_further_filter_results"),
                                                       
                                                       hr(),
                                                       DT::dataTableOutput("ab_info_table"),
-                                                      textOutput("unpair_message"),
+                                                      br(),
+                                                      uiOutput("ui_unpair_message"),
                                                       DT::dataTableOutput("unpaired_table")
                                                       
                                                
@@ -1479,17 +1471,28 @@ ui <- fluidPage(
                       h5(paste0("Version: ", release)),
                       br(),
                       h5("Documentation can be found in the following link:"),
+                      
                       tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
-                      h5(),
-                      h5("If you have used VCAb in your work, please cite: "),
-                      br(),
-                      h5("Dongjun Guo, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
-                      br(),
-                      div(img(src="./Fig2_VCAb_db.png",
-                              width = 1080#, height = 80
-                      )),
-                      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
-                      br()
+                      br(),br(),br(),
+                      HTML('<center><img src="VCAb_proposal_figure_DG_JN.jpg" width="800"></center>'),
+                      #div(img(src="VCAb_proposal_figure_DG_JN.jpg",
+                      #        width = 880#, height = 80
+                      #),style="display: block; margin-left: auto; margin-right: auto;"),
+                      HTML("VCAb (V and C region bearing antibody) web interface is established with the purpose to
+                          link repertoire, sequence and available antibody experimental structure space,
+                          clarify the annotation of isotype and structural coverage of human antibody structures, 
+                         and provide an accessible and easily consultable resource. 
+                          <br>
+                         <br> Users can search the VCAb by uploading repertoire files, entering the PDB identifiers, 
+                         attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches.
+                         For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. 
+                         The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. 
+                         
+                         Researchers interested in antibody annotations and structures would benefit from the VCAb web server, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues.
+                          <br><br><br>"
+                        
+                           ),
+                           br()
              )	     
   )
   
@@ -1512,8 +1515,55 @@ server <- function(input,output,session){
   two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
   
+  ## To upload fasta files:
+  output$ui_up_fasta <- renderUI({
+    input$clear_up_fasta
+    fileInput("upload","Upload a fasta file (200 seqs max)")
+  })
+  
+  ## Record the uploaded file state for the Sequence:Search in batch panel
+  up_fasta_state <- reactiveValues(state=NULL) # the state for the uploaded fasta file
+  observeEvent(input$upload,{up_fasta_state$state <- 'uploaded'})
+  
+  example_fasta_state <- reactiveValues(unpaired=NULL,paired=NULL) # the state for the uploaded fasta EXAMPLE file
+  observeEvent(input$ex_unpaired_seq,{
+    example_fasta_state$unpaired <- "uploaded"
+    updateRadioButtons(session,"up_paired",selected="unpaired")
+    output$up_ex_fasta<-renderText({paste(readLines("example_fasta_search/example_unpaired_seqs.fasta"),collapse="\n")})
+    })
+  observeEvent(input$ex_paired_seq,{
+    example_fasta_state$paired <- "uploaded"
+    updateRadioButtons(session,"up_paired",selected="paired")
+    output$up_ex_fasta<-renderText({paste(readLines("example_fasta_search/example_paired_seqs.fasta"),collapse="\n")})
+    })
+  # Reset the state of the uploaded fasta files
+  observeEvent(input$clear_up_fasta,{
+    up_fasta_state$state <- NULL
+    example_fasta_state$unpaired <- NULL
+    example_fasta_state$paired <- NULL
+    updateRadioButtons(session,"up_paired",selected="unpaired")
+    output$up_ex_fasta<-renderText({NULL})
+    ab_info$ab_info_df <- NULL
+  })
+  
+  total_up_fasta <- reactive({
+    if (!(is.null(up_fasta_state$state))){
+      return (input$upload$datapath)
+    }else{
+      # check if the user click the action link to load example fasta
+      if (!(is.null(example_fasta_state$unpaired)) && !(is.null(input$ex_unpaired_seq)) && input$ex_unpaired_seq>0){
+        return ("example_fasta_search/example_unpaired_seqs.fasta")
+      }
+      if (!(is.null(example_fasta_state$paired)) && !(is.null(input$ex_paired_seq)) && input$ex_paired_seq>0){
+        return ("example_fasta_search/example_paired_seqs.fasta")
+      }
+    }
+    return (NULL)
+  })
+
   
   
+  ## After the user hit the search button
   observeEvent(input$search,{
     # Initialize everything:
     initialize_everything()
@@ -1524,32 +1574,84 @@ server <- function(input,output,session){
     updateTabsetPanel(session, "struc_seq_viewer",
                       selected = "Structural_Viewer")
     
-    # Show the buttons and select_column options when the user click the search:
+    # Show the buttons and select_column options when the user click the search && there are results in the ab_info$ab_info_df is not NULL:
+    
     output$ab_info_buttons_ui <- renderUI({
       tagList(
         selectInput("file_col","Select the additional column(s) you want to display",
                     choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
                     multiple=TRUE)%>%
           helper(type="inline",title="Display additional columns",
-                 content=c("For simplicity, some columns of the antibody table below are hidden",
-                           "By selecting the column names listed here, you can acquire the information in these columns",
-                           "Multiple columns can be selected at the same time")),
+                content=c("For simplicity, some columns of the antibody table below are hidden",
+                            "By selecting the column names listed here, you can acquire the information in these columns",
+                            "Multiple columns can be selected at the same time")),
         fluidRow(
           column(4,
-                 downloadButton("download_subset",label="Download search results")
+                  downloadButton("download_subset",label="Download search results")
           ),
           column(8,
-                 checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
-                   helper(type="inline",title="Download search results",
+                  checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
+                    helper(type="inline",title="Download search results",
                           content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
                                     "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
                                     "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
                           ))
           )
-          
+            
         )
       )
     })
+      
+    if(tabs_value()=="Sequence"){
+      output$ui_further_filter_results <- renderUI({
+        tagList(
+          hr(),
+          fluidRow(
+            column(5,
+                   strong ("Filter the results by features:"),
+                   br(),br(),
+                   selectInput("flt_species","Species:",choices=c("All",unique(vcab$Species))) %>%
+                     helper(type="inline",title="Species",
+                            content=c("Species annotation for the antibody")),
+                   selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
+                     helper(type="inline",title="Isotype", 
+                            content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                      "Each isotype has different function.")),
+                   
+                   selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
+                     helper(type="inline",title="Light chain type", 
+                            content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                   selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                     helper(type="inline", title="Structural Coverage",
+                            content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                      "Full antibody covers both Fab and Fc region"))
+            ),
+            column(5, offset=2,
+                   
+                   selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                     helper(type="inline",title="If has antigen",
+                            content=c("If the pdb file of this entry containing the antigen chain",
+                                      "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
+                                      "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                      "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                   selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                     helper(type="inline",title="Experimental Method",
+                            content=c("The experimental method used to acquire the structure.")),
+                   numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                     helper(type="inline",title="Resolution Threshold",
+                            content=c("This is used to acquire structures with resolution below the threshold.",
+                                      "The threshold can be set to value from 1 to 5.")),
+                   actionButton("filter","Filter")
+                   # Just empty the input to allow the user to select ab without the limit of resolution.
+            )
+          )
+        )
+          
+      })
+    }
+    
+    
+    
     # Do the actual job
     if (tabs_value() == "PDB"){
       inputted_pdb<- tolower(input$pdb_txt)
@@ -1577,7 +1679,7 @@ server <- function(input,output,session){
     else if (tabs_value() == "Sequence"){
       
       ### Identify if the user upload the fasta file ###
-      if (is.null(input$upload)){
+      if (is.null(total_up_fasta())){
         ## IF the user didn't upload the file, 
         ## Display chain type message, the table containing ab_info & blast_result
         
@@ -1921,8 +2023,8 @@ server <- function(input,output,session){
         # IF the user upload the file, 
         # only display the table containing ab_info & blast_result, without the chain type message.
         
-        uploaded <- input$upload
-        uploaded_path <- check_uploaded_file(uploaded$datapath) # check if the uploaded file is a fasta file containing 200 seqs max.
+        uploaded <- total_up_fasta()
+        uploaded_path <- check_uploaded_file(uploaded) # check if the uploaded file is a fasta file containing 200 seqs max.
         
         # Check if the uploaded file is a fasta file containing 200 seqs max.
         if (is.null(uploaded_path)){
@@ -1938,7 +2040,12 @@ server <- function(input,output,session){
             pair_info <- uploaded_file_blast_paired(uploaded_path,input$sele_bl_db)
             unpaired <- pair_info$unpaired # allow the user to download this table later
             paired_bl <- pair_info$paired_bl
-            paired_bl_ab <- generate_total_info(paired_bl,ns)
+            if (is.null(paired_bl)){
+              paired_bl_ab <- NULL
+            } else{
+              paired_bl_ab <- generate_total_info(paired_bl,ns)
+            }
+            
             
             ab_info$ab_info_df <- paired_bl_ab
             ab_info$unpaired <- unpaired
@@ -1998,16 +2105,30 @@ server <- function(input,output,session){
             ab_info$ab_info_df <- new_bl_ab_df
           }
           else{
-            showModal(modalDialog(title="Select a different sequence", "The sequence you selected has no/multiple matched sequence paired with the one you selected,
-                                  please try another sequence in the repertoire"))
+            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The sequence you selected has no/multiple matched sequence paired with the one you selected,
+                                  Please: <br>
+                                  <b> 1. try to select another entry in the repertoire; or you haven't select any entry in the repertoire table <br> </b>
+                                  the entry you selected is probably unpaired, or has multiple paired heavy or light chain.<br>
+                                  <b> 2. Check if the uploaded repertoire contains the paired heavy-light chain sequence
+                                  (If not, please choose the Unpaired mode) <br>
+                                  3. If you are under the Customized searching mode, check if you select </b>
+                                  <br> a) the correct column holding the cell_ID/barcode;
+                                  <br> b) the correct column holding valid protein sequence; AND
+                                  <br> c) the correct column indicating if the chain is heavy or light chain
+                                  (note: the chain must contain only the value of IGH, IGK, or IGL)")))
           }
         }
         else{
           # if the searching mode is unpaired
           reper_selected_info <- get_unpaired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$seq_col,repertoire$chainType_col)
           if (reper_selected_info$seq==""){
-            showModal(modalDialog(title="Select a different sequence", "The entry you selected has no sequence,
-                                  please try another entry in the repertoire"))
+            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The entry you selected has no valid sequence,
+                                  Please: <br>
+                                  <b> 1. try another entry in the repertoire; or you haven't select any entry in the repertoire table <br>
+                                  2. If you are under the Customized searching mode, check if you select </b>
+                                  <br> a) the correct column holding valid protein sequence; and
+                                  <br> b) the correct column indicating if the chain is heavy or light chain
+                                  (note: the chain must contain only the value of IGH, IGK, or IGL)")))
           } else {
             blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
             
@@ -2054,7 +2175,17 @@ server <- function(input,output,session){
     
   })
   
-  # Make a interactive UI for the Repertoire panel
+  # To upload repertoire file:
+  output$ui_reper_uploaded <- renderUI({
+    input$clear_reper_file
+    fileInput("up_repertoire",
+              label="Upload repertoire table",
+              accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv"))
+    
+  })
+  
+  
+  # Record the uploaded file state for the Repertoire panel
   repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
   query_state <- reactiveValues(state=NULL)
   observeEvent(input$reper_url,{
@@ -2081,16 +2212,23 @@ server <- function(input,output,session){
     remove_query_string(session,mode = "push")
     #input$ex_cus_reper_file <- NULL
     repertoire$table <- NULL
+    ab_info$ab_info_df <- NULL
   })
   # Set the state for example files
   example_reper_state <- reactiveValues(cus=NULL,airr=NULL,cranger=NULL)
   observeEvent(input$ex_airr_reper_file,{example_reper_state$airr <- "uploaded"})
   observeEvent(input$ex_cranger_reper_file,{example_reper_state$cranger <- "uploaded"})
-  observeEvent(input$ex_cus_reper_file,{example_reper_state$cus <- "uploaded"})
+  observeEvent(input$ex_cus_reper_file,{
+    example_reper_state$cus <- "uploaded"
+    updateRadioButtons(session,"reper_search_mode",selected="unpaired")
+    })
   observeEvent(input$clear_reper_file,{
     example_reper_state$cus <- NULL
     example_reper_state$airr <- NULL
     example_reper_state$cranger <- NULL
+    updateRadioButtons(session,"reper_search_mode",selected="unpaired")
+    output$ui_repertoire_customized_cell_id <- renderUI({NULL})
+    output$ui_repertoire_customized <- renderUI({NULL})
     })
   # Return the value for the path of the uploaded file/url/example_files
   total_repertoire_file_state <- reactive({
@@ -2155,7 +2293,7 @@ server <- function(input,output,session){
             reper_table[,"cell_id"] <- apply(reper_table[,"sequence_id"],1,function(x){strsplit(x,"_")[[1]][1]})
           }
           reper_table <- as.data.frame(reper_table)
-          
+          output$ui_repertoire_customized_cell_id <- renderUI({NULL})
           output$ui_repertoire_customized <- renderUI({NULL})
           
           repertoire$cell_id_col="cell_id"
@@ -2166,6 +2304,7 @@ server <- function(input,output,session){
         else if (input$reper_format=="cell_ranger"){
           reper_table <- read.csv(repertoire$path,row.names = NULL)
           
+          output$ui_repertoire_customized_cell_id <- renderUI({NULL})
           output$ui_repertoire_customized <- renderUI({NULL})
           repertoire$cell_id_col="barcode"
           repertoire$seq_col=c("fwr1","cdr1","fwr2","cdr2","fwr3","cdr3","fwr4")
@@ -2173,29 +2312,36 @@ server <- function(input,output,session){
         }
         else if (input$reper_format=="customized"){
           reper_table <- as.data.frame(data.table::fread(repertoire$path,header=TRUE))
+          output$ui_repertoire_customized <- renderUI({
+            tagList(
+              selectInput(ns("repertoire_seq_col"),
+                          label=helper(shiny_tag = "Choose column(s) holding amino acid sequences: ", colour = "royalblue2",
+                                       type="inline",title="Select column(s) holding protein sequence",
+                                       content=HTML("You can choose one or multiple column(s) holding amino acid sequence here.<br><br>
+                                                  If multiple columns are choosen, the program will automatically concatenate sequence fragments in these columns into
+                                                  one sequence, and use this sequence for BLAST.<br>
+                                                  This is useful if in the repertoire file, sequences are truncated into fragments of frameworks and CDRs, or fragments of V and C regions.<br>
+                                                  <b> Note: when multiple columns are selected, the concatenation of fragments depends on the order of the column names
+                                                  you inputed.</b>
+                                                 ")),
+                          choices=colnames(reper_table),multiple=TRUE),
+              selectInput(ns("repertoire_chainType_col"),"Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+                          choices=colnames(reper_table))
+            )
+            
+          })
+          
           if (input$reper_search_mode=="paired"){
-            output$ui_repertoire_customized <- renderUI({
+            output$ui_repertoire_customized_cell_id <- renderUI({
               tagList(
                 selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
-                            choices=colnames(reper_table)),
-                selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
-                            choices=colnames(reper_table),multiple=TRUE),
-                selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
                             choices=colnames(reper_table))
               )
+              
               
             })
           }else{
-            output$ui_repertoire_customized <- renderUI({
-              tagList(
-                selectInput("repertoire_seq_col","Choose column(s) holding amino acid sequences",
-                            choices=colnames(reper_table),multiple=TRUE),
-                selectInput("repertoire_chainType_col","Choose column indicating the identity of the chain (IGH/IGK/IGL)",
-                            choices=colnames(reper_table))
-              )
-              
-            })
-            
+            output$ui_repertoire_customized_cell_id <- renderUI({NULL})
           }
           
           
@@ -2208,6 +2354,15 @@ server <- function(input,output,session){
           observeEvent(input$repertoire_chainType_col,{
             repertoire$chainType_col=input$repertoire_chainType_col
           })
+          # update the selectInput when example file is loaded
+          observeEvent(input$ex_cus_reper_file,{
+            updateSelectInput(session,"repertoire_seq_col",selected=c("AA_seq"))
+            updateSelectInput(session,"repertoire_chainType_col",selected="locus")
+          })
+          observeEvent(input$clear_reper_file,{
+            updateSelectInput(session,ns("repertoire_seq_col"))
+            updateSelectInput(session,ns("repertoire_chainType_col"))
+          })
           
         }
         else{
@@ -2215,6 +2370,13 @@ server <- function(input,output,session){
         }
         
         repertoire$table <- reper_table
+        #horl_locus <- isolate(repertoire$table[[repertoire$chainType_col]])
+        #if(!(all(horl_locus %in% c("IGH","IGK","IGL")))){
+        #  showModal(modalDialog(title="Choose the correct column", 
+        #                        "Please choose the correct column indicating the chain type of the sequence (H or L) \n
+        #                        all the value in this column must be one of these: IGH, IGK, or IGL"))
+        #  repertoire$table <- NULL
+        #}
       
     }
     
@@ -2365,9 +2527,24 @@ server <- function(input,output,session){
   })
   
   # Display the message if there are unpaired seq in the fasta file
-  unpair_mess <- reactive({if (is.null(ab_info$unpaired)) "" else "Unpaired sequences identified in the fasta file:"})
+  unpair_mess <- reactive({if (is.null(ab_info$unpaired)) "" else "<br> <b> Note: Under the paired searching mode, only the paired sequence will be searched.
+                                                                   <br> The fasta title for the paired H-L sequence must be in this format:AbName-HorLLabel (Please check the example file)
+                                                                   <br>
+                                                                  <br> Unpaired sequences identified in the fasta file: </b>"})
   
-  output$unpair_message <- renderText({unpair_mess()})
+  output$ui_unpair_message <- renderUI({
+      HTML(unpair_mess())
+  })
+  observe({
+    if (!(is.null(ab_info$unpaired))){
+      hide("ab_info_buttons_ui")
+      hide("ui_further_filter_results")
+    }else{
+      show("ab_info_buttons_ui")
+      show("ui_further_filter_results")
+    }
+  })
+  #output$unpair_message <- renderText({HTML(unpair_mess())})
   output$unpaired_table <- DT::renderDataTable({
     DT::datatable(ab_info$unpaired,selection="none",options=list(scrollX = TRUE))
   })
