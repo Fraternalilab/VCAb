@@ -2189,8 +2189,11 @@ server <- function(input,output,session){
   # Record the uploaded file state for the Repertoire panel
   repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
   query_state <- reactiveValues(state=NULL)
-  observeEvent(input$reper_url,{
+  observe({                    
     if (input$reper_file!=""){
+      query_state$state <- 'uploaded'
+    }
+    else if ("reper_file" %in% names(getQueryString())){
       query_state$state <- 'uploaded'
     }
     else{
@@ -3341,10 +3344,10 @@ server <- function(input,output,session){
     if (!(is.null(query_state$state))){
       query <- getQueryString()
       if (!(is.null(query[["tab"]]))){
-        updateTabsetPanel(session, "Search",
+        updateTabsetPanel(session, "tabs",
                           selected = query[["tab"]])
       }
-      if (!(is.null(query[["mode"]]))){
+      if (!(is.null(query[["format"]]))){
         updateRadioButtons(session,"reper_format",selected=query[["format"]])
       }
     }
