@@ -1,5 +1,5 @@
 # VCAb
-This repository contains all the source code needed to generate VCAb database and the shiny application of it.
+This repository contains all the source code needed to generate the web interface and assembling the available experimental antibody structure space (Antibodies containing both V and C regions).
 
 ## Access VCAb online
 
@@ -7,8 +7,13 @@ VCAb can be accessed [online](https://fraternalilab.kcl.ac.uk/VCAb/). For docume
 
 ## Generate local version of VCAb
 
-### VCAb database
-To generate the VCAb database, go to the `vcab_db` directory, run `generate_db.py`.
+### VCAb shiny application
+To generate the VCAb shiny app, go to `shiny` and run `app.R`.
+#### Note
+In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
+
+### VCAb antibody structural space
+To collect the available experimental structural space of antibodies with both V and C regions, go to the `vcab_db` directory, run `generate_db.py`.
 #### Note 
 1. `generate_db.py` should be run in python 3.
 2. In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
@@ -16,10 +21,6 @@ To generate the VCAb database, go to the `vcab_db` directory, run `generate_db.p
 3. `seq_db` hold all the BLAST databases. Two files are under this directory: `ref_db` contains reference sequences for isotypes and light chain types collected from uniprot and won't be changed. `vcab_db` includes sequences in VCAb, which would be updated when `generate_db.py` is run.
 4. anarci_vc is a package modified from anarci, used for antibody numbering for both V and C sequences. Please check [github page](https://github.com/Fraternalilab/ANARCI_vc) for more information.
 
-### VCAb shiny application
-To generate the VCAb shiny app, go to `shiny` and run `app.R`.
-#### Note
-In order to run this code, BLAST must be installed in the command line. Please go to [NCBI BLAST](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download) for more information.
 
 ### Packages required 
 | file | Package | version |
