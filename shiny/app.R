@@ -923,7 +923,7 @@ get_unpaired_repertoire_seq <- function (o_df,row_num,seq_cols,chainType_col){
   df=o_df[row_num,]
   
   chaintype=o_df[row_num,chainType_col]
-  ct=ifelse(chaintype=="IGH","H","L")
+  ct=ifelse(grepl("IGH",chaintype),"H","L")
   seq=""
   
   for (i in seq_cols){
@@ -1226,7 +1226,10 @@ ui <- fluidPage(
                                                                                    column(9,
                                                                                           tags$head(tags$style(HTML(".not_bold label {font-weight:normal;}"))),
                                                                                           div(
-                                                                                            textInput("reper_file", "Or input a http address for repertoire file here:", ""),
+                                                                                            textInput("reper_file", "Or input a http address for repertoire file here:", 
+                                                                                                      value=""
+                                                                                                      #value="https://mabra.biomed.kcl.ac.uk/BrepExports/VCAb14fc2f644d21c8"
+                                                                                                      ),
                                                                                             class="not_bold"
                                                                                           )
                                                                                           
@@ -1248,7 +1251,12 @@ ui <- fluidPage(
                                                                                  actionButton("clear_reper_file","Clear uploaded repertoire file/url"),
                                                                                  
                                                                                  radioButtons(inputId="reper_format", 
-                                                                                              label="Please select the format of the repertoire file", 
+                                                                                              label=helper(
+                                                                                                shiny_tag="Please select the format of the repertoire file: ",color="royalblue2",
+                                                                                                type="inline", title="Selection of the format of repertoire file",
+                                                                                                content=HTML(" Please check this <a href=\"https://github.com/Fraternalilab/VCAb/wiki/Query-Input#select-the-format-of-the-repertoire-file\", target=\"_blank\">link</a> for details.
+                                                                                                             ")
+                                                                                              ),
                                                                                               choices=c("AIRR" = "airr",
                                                                                                         "Cell ranger" = "cell_ranger",
                                                                                                         "Customized" = "customized")),
@@ -2131,7 +2139,8 @@ server <- function(input,output,session){
                                   <br> b) the correct column indicating if the chain is heavy or light chain
                                   (note: the chain must contain only the value of IGH, IGK, or IGL)")))
           } else {
-            blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
+            #blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
+            blast_db_dir <- HV_bl
             
             blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir) # return the dataframe of the complete result of the blast
             if (is.null(blast_df)==FALSE){
@@ -2213,6 +2222,7 @@ server <- function(input,output,session){
   observeEvent(input$clear_reper_file,{
     uploaded_repertoire_file_state$state <- NULL
     updateTextInput(session, "reper_file", value = "")
+    #print ("2226")
     remove_query_string(session,mode = "push")
     #input$ex_cus_reper_file <- NULL
     repertoire$table <- NULL
@@ -2265,28 +2275,24 @@ server <- function(input,output,session){
     
   })
   
+  # Update the query string based on the user-inputted url
+  observe({
+    js$encode_url(input$reper_file)
+  })
+  observeEvent(input$reper_url,{
+    if (!(is.null(input$encoded_url))){
+      
+      #new_str=paste0("?reper_file=",input$reper_file)
+      new_str=paste0("?reper_file=",input$encoded_url)
+      updateQueryString(new_str,mode="push")
+      
+    }
+    else{
+      remove_query_string(session,mode = "push")
+    }
+  })
   
   observe({
-    # Only change the query string & read new repertoire table when repertoire$path is empty
-    #if (is.null(repertoire$path)){
-      # Update the query string information when the "upload url" button is clicked:
-      
-      observe({
-        js$encode_url(input$reper_file)
-      })
-      observeEvent(input$reper_url,{
-        if (!(is.null(input$encoded_url))){
-          
-          #new_str=paste0("?reper_file=",input$reper_file)
-          new_str=paste0("?reper_file=",input$encoded_url)
-          updateQueryString(new_str,mode="push")
-          
-        }
-        else{
-          remove_query_string(session,mode = "push")
-        }
-      })
-      
       # Read the repertoire table:
       if (is.null(total_repertoire_file_state())==FALSE){
         repertoire$path<-total_repertoire_file_state()
@@ -2329,7 +2335,14 @@ server <- function(input,output,session){
                                                   you inputed.</b>
                                                  ")),
                           choices=colnames(reper_table),multiple=TRUE),
-              selectInput(ns("repertoire_chainType_col"),"Choose column indicating the identity of the chain (IGH/IGK/IGL)",
+              selectInput(ns("repertoire_chainType_col"),
+                          label=helper(shiny_tag="Choose column indicating the identity of the chain (IGH/IGK/IGL)", colour = "royalblue2",
+                                       type="inline",title="Select column(s) indicating the chain type (H or L)",
+                                       content=HTML("<b>Under unpaired searching mode: </b><br>
+                                                    The value of the selected column must contain the string \"IGH\",\"IGL\", or \"IGK\"<br><br>
+                                                    <b>Under paired searching mode: </b><br>
+                                                    The value of the selected column must be <b>EXACTLY</b> \"IGH\",\"IGL\", or \"IGK\"")),
+                          
                           choices=colnames(reper_table))
             )
             
