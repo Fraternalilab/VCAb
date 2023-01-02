@@ -153,11 +153,16 @@ def replace_back_T_F_chain (o_df):
 
     return df
 
-def read_pops_file(iden_code,pops_dir):
-    # return popsFile: h_df, l_df, which contains residues with d_SASA >15
+def read_pops_file(iden_code,pops_dir,if_c="_C"):
+    """
+    Return popsFile: h_df, l_df, which contains residues with d_SASA >15
+    :args if_C: determines the POPS file readed.
+                If "", read POPS for chain_pdb;
+                If "_C", read POPS for c_PDB (the pdb containing C region only)
+    """
     h,l=iden_code.split('_')[1]
 
-    o_df=pd.read_csv(f'{pops_dir}/{iden_code}_C_deltaSASA_rpopsResidue.txt',sep=' ')
+    o_df=pd.read_csv(f'{pops_dir}/{iden_code}{if_c}_deltaSASA_rpopsResidue.txt',sep=' ')
     n_df=replace_back_T_F_chain (o_df)
 
     df=n_df.loc[o_df['D_SASA.A.2']>15] # only keep residues with D_SASA above the threshold
@@ -195,13 +200,16 @@ def map_aln_pos_to_pure_seq_pos (aln_pos,aln_seq):
     return pure_seq_pos
 
 # 3. Convert IMGT numbering(author_seq) into pure_position(coor_seq)
-def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_dir,num_scheme=imgt_numbering):
+
+def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_dir,if_C="_C",num_scheme=imgt_numbering,gap_included=False):
     """
     Returned a list in this format {imgt_numbering:[res_obj, if_interface_residue]}
     :args chainType: can only be "H" or "L"
     :args num_df: the df outputed by anarci_c containing the C_numbering results
     :args pdb_dir: the directory of the c_pdb files
-    :args num_scheme: the list containing all the numbering we want to included into the interface matrix
+    :args if_C: determines the structural & POPS file readed. If "", read chain_PDB; If "_C", read c_PDB (the pdb file contains C region only).
+    :args num_scheme: None or the list containing all the numbering we want to included into the interface matrix
+                          If the num_scheme ==None, then num_scheme== existed_numbering
     """
     pdbid=iden_code.split("_")[0]
     chainTypeNum=0
@@ -210,7 +218,8 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
     chain=iden_code.split("_")[1][chainTypeNum]
     id_code=f"{pdbid}_{chain}"
 
-    num_info=num_df.loc[num_df["Id"]==id_code]
+    #num_info=num_df.loc[num_df["Id"]==id_code]
+    num_info=num_df.loc[map(lambda x: x[0:6]==id_code,num_df["Id"])]
     pure_num_info0=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0] not in["deleted","-"])]
     # pure_num_info0 removes positions generating gaps(both "deleted" and. "-") in the coor_seq
     pure_num_info={numbering:[pure_pos,res] for pure_pos,(numbering,res) in enumerate(pure_num_info0)}
@@ -221,7 +230,8 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
 
     # Get the structural_object of the chain
     parser=Bio.PDB.PDBParser()
-    structure=parser.get_structure(iden_code,f"{pdb_dir}/{iden_code}_C.pdb")
+    structure=parser.get_structure(iden_code,f"{pdb_dir}/{iden_code}{if_C}.pdb")
+
     chain_obj=structure[0][chain]
 
     coor_seq_info=[res for res in chain_obj if res.resname !="X" and res.id[0]==' ']
@@ -238,12 +248,15 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
     alned_coor_seq=pair_aln.seqB
 
     # Read POPS File
-    pops=read_pops_file(iden_code,pops_dir)[chainTypeNum]
+    pops=read_pops_file(iden_code,pops_dir,if_C)[chainTypeNum]
 
     # 2. Convert IMGT_num_pos into pure_pos of coor_seq
     # IMGT_num --> pure_pos (imgt_seq) -->aln_pos (imgt_seq)=aln_pos(coor_seq) -->pure_pos (coor_seq)
     result={}
     #test=[]
+    if num_scheme ==None:
+        num_scheme=existed_numbering
+
     for i in num_scheme:
         result[i]=[np.nan,np.nan]
 
@@ -273,8 +286,17 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
                 res_obj=coor_seq_info[coor_seq_pure_pos]
                 if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
                 result[i]=[res_obj,if_interface_res]
+    if gap_included:
+        gap_info=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0]=="-")]
+        #record the original numbering order (gap included, don't include "deleted")
+        gap_included_num=[num for (num,res) in num_info.iloc[:,13:].items() if res.values[0]!="deleted"]
+
+        for num,gap in gap_info:
+            result[num]=["-",np.nan]
+        result={k:result[k] for k in gap_included_num}
     return result
     #return test
+
 
 # 4. Generate the distance matrix
 def generate_distance_matrix (iden_code,pdb_dir,pops_dir,hcnum,lcnum):
@@ -359,18 +381,107 @@ def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
     labels={i:[new_abs_ordered[i]]+list(df.loc[df["iden_code"]==new_abs_ordered[i],["Htype","Ltype"]].values[0]) for i in range(len(new_abs_ordered))}
     return result,labels
 
+######### FUNCTIONS TO GENERATE RES_INFO & COMPLETE DISTANCE MATRIX ###########
+def combine_v_c_numbering (v_res_info,c_res_info):
+    v_res_df=pd.DataFrame(v_res_info,index=["residue_obj","if_interface"]).T
+    c_res_df=pd.DataFrame(c_res_info,index=["residue_obj","if_interface"]).T
 
+    v_res_df=v_res_df.reset_index().rename(columns={"index":"imgt_numbering"})
+    c_res_df=c_res_df.reset_index().rename(columns={"index":"imgt_numbering"})
+
+    res_df=pd.concat([v_res_df,c_res_df],keys=["V","C"]).reset_index().rename(columns={"level_0":"VorC"}).drop(columns=["level_1"])
+
+    recorded=[]
+    extra=[]
+    # This is drop the V region end tail numbered in the C region
+    for i in res_df.index:
+        res=res_df.loc[i,"residue_obj"]
+        if (res in recorded or type(res)==float) and type(res)!=str:
+            extra.append(i)
+        recorded.append(res)
+    res_df=res_df.drop(index=extra).reset_index(drop=True)
+
+    res_df["residue"]=[r if type(r)==str else r.resname for r in res_df["residue_obj"].values]
+    res_df["res_code"]=[aa_names[r] if r in aa_names.keys() else "" for r in res_df["residue"].values]
+    res_df["pdb_numbering"]=[pd.NA if type(r)==str else r.id[1] for r in res_df["residue_obj"].values]
+
+    return res_df
+
+def generate_complete_distance_matrix (iden_code,chain_pdb_dir,total_pops_dir,vhnum,vlnum,hcnum,lcnum,m_out_dir,n_out_dir):
+    """
+    Calculate the complete domain-packing contact matrix
+    1. Include all the residues (non-gap)
+    2. Include both V and C domains
+    3. Calculate the paiwise distance for all, no matter if they are
+    involved in interface or not
+    4. Meanwhile, generate the dataframe, recording the info for each residue (gap included)
+       (pdb numbering, imgt numbering, if it is involved in interface)
+    :args m_out_dir: the out directory storing the total matrix
+    :args n_out_dir: the our directory storing the residues info with imgt,pdb, VorC, if_interface info.
+
+    """
+
+    vh_res_info=map_imgt_numbering_to_residue_info(iden_code,"h",vhnum,chain_pdb_dir,total_pops_dir,if_C="",num_scheme=None,gap_included=True)
+    vl_res_info=map_imgt_numbering_to_residue_info(iden_code,"l",vlnum,chain_pdb_dir,total_pops_dir,if_C="",num_scheme=None,gap_included=True)
+
+    ch_res_info=map_imgt_numbering_to_residue_info(iden_code,"h",hcnum,chain_pdb_dir,total_pops_dir,if_C="",num_scheme=None,gap_included=True)
+    cl_res_info=map_imgt_numbering_to_residue_info(iden_code,"l",lcnum,chain_pdb_dir,total_pops_dir,if_C="",num_scheme=None,gap_included=True)
+
+    h_res_df=combine_v_c_numbering (vh_res_info,ch_res_info)
+    l_res_df=combine_v_c_numbering (vl_res_info,cl_res_info)
+
+    # take out the gaps to prepare for the calculation of complete interface matrix:
+    h_res_df1=h_res_df.loc[map(lambda x:type(x)!=str,h_res_df["residue_obj"].values)].reset_index(drop=True)
+    l_res_df1=l_res_df.loc[map(lambda x:type(x)!=str,l_res_df["residue_obj"].values)].reset_index(drop=True)
+
+    result = np.zeros((len(h_res_df1), len(l_res_df1)), float)
+    for row, h_res in enumerate(h_res_df1["residue_obj"].values) :
+        for col, l_res in enumerate(l_res_df1["residue_obj"].values) :
+            hres_obj=h_res
+            lres_obj=l_res
+            try:
+                diff_vector  = hres_obj["CA"].coord - lres_obj["CA"].coord
+            except:
+                diff_vector = np.nan
+            #    print ((hres_obj.id,lres_obj.id))
+            result[row, col] = np.linalg.norm(diff_vector)
+
+    np.savetxt(f"{m_out_dir}/{iden_code}.txt",result,fmt='%10.5f')
+
+    h_res_df=h_res_df.drop(columns=["residue_obj"])
+    l_res_df=l_res_df.drop(columns=["residue_obj"])
+    h_res_df.to_csv(f"{n_out_dir}/{iden_code}_H_res_info.csv", index=False)
+    l_res_df.to_csv(f"{n_out_dir}/{iden_code}_L_res_info.csv", index=False)
+
+    return result,h_res_df,l_res_df
 
 ######### APPLY THE FUNCTIONS ##############
 vcab=pd.read_csv("./result/final_vcab.csv").drop(columns=["Unnamed: 0"])
-hcnum=pd.read_csv("./num_result/cnumbering_H_C1.csv")
-lcnum=pd.read_csv("./num_result/cnumbering_KL_C.csv")
+
+vhnum=pd.read_csv("./result/num_result/vnumbering_H.csv")
+vlnum=pd.read_csv("./result/num_result/vnumbering_KL.csv")
+if "Unnamed: 0" in vhnum.columns:
+    vhnum=vhnum.drop(columns=["Unnamed: 0"])
+if "Unnamed: 0" in vlnum.columns:
+    vlnum=vlnum.drop(columns=["Unnamed: 0"])
+
+hcnum=pd.read_csv("./result/num_result/cnumbering_H_C1.csv")
+lcnum=pd.read_csv("./result/num_result/cnumbering_KL_C.csv")
+if "Unnamed: 0" in hcnum.columns:
+    hcnum=hcnum.drop(columns=["Unnamed: 0"])
+if "Unnamed: 0" in lcnum.columns:
+    lcnum=lcnum.drop(columns=["Unnamed: 0"])
 
 
 pdb_dir="../pdb_struc/c_pdb/"
 pops_dir="../pops/result"
 
+chain_pdb_dir="../pdb_struc/chain_pdb/"
+total_pops_dir="../pops/total_result/"
+
 mtrx_out_dir="../ch1_cl_interface_matrix/matrix_results/"
+complete_mtrx_dir="../ch1_cl_interface_matrix/complete_matrix"
+res_info_out_dir="../res_info"
 #os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
 
 print ("Calculating interface matrix")
@@ -410,6 +521,24 @@ with open('../ch1_cl_interface_matrix/dm_of_dm_label.json', 'w') as fp:
 
 dm_df=pd.DataFrame(dm,columns=[ab_info_label[k][0] for k in ab_info_label.keys()],index=[ab_info_label[k][0] for k in ab_info_label.keys()])
 dm_df.to_csv("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv")
+
+# Generate res_info
+print ("calculating res info")
+total_int_mtrx_not_calculated=[]
+for i in vcab.index:
+    iden_code=vcab.loc[i,"iden_code"]
+    if os.path.exists(f"{n_out_dir}/{iden_code}_H_res_info.csv"):
+        # skip the precalcuated res_info
+        continue
+
+    try:
+        __,__,__,=generate_complete_distance_matrix (iden_code,chain_pdb_dir,total_pops_dir,vhnum,vlnum,hcnum,lcnum,complete_mtrx_dir,res_info_out_dir)
+
+    except:
+        print (iden_code)
+        total_int_mtrx_not_calculated.append(iden_code)
+with open("../ch1_cl_interface_matrix/complete_matrix/mtrx_not_calculated.txt", 'w') as f:
+    f.write(",".join(total_int_mtrx_not_calculated))
 
 today=date.today()
 update_date=today.strftime("%d/%m/%Y")
