@@ -51,6 +51,7 @@ LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 mtrix_dir="../ch1_cl_interface_matrix/complete_matrix/"
 res_info_dir="../res_info/"
 
+
 # Files required to display the numbering function
 vh_num_dir="../vcab_db/result/num_result/vnumbering_H_shiny.csv"
 vl_num_dir="../vcab_db/result/num_result/vnumbering_KL_shiny.csv"
@@ -1649,8 +1650,8 @@ server <- function(input,output,session){
                    numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
                      helper(type="inline",title="Resolution Threshold",
                             content=c("This is used to acquire structures with resolution below the threshold.",
-                                      "The threshold can be set to value from 1 to 5.")),
-                   actionButton("filter","Filter")
+                                      "The threshold can be set to value from 1 to 5."))#,
+                   #actionButton("filter","Filter")
                    # Just empty the input to allow the user to select ab without the limit of resolution.
             )
           )
@@ -2492,45 +2493,20 @@ server <- function(input,output,session){
   })
   
   # Filter the rows based on the user input
-  file_row_idx <- function(df){
-    reactive({
-      if (tabs_value()=="Sequence"){
-        return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
-        #if (input$filter){
-        #filter <- TRUE
-        #observeEvent(input$filter,{
-        #  filter <- filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df)
-          #return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
-        #  print (filter)
-        #  })
-        
-        #return (filter)
-        
-        
-        #}
-        #else{
-        #  return (TRUE)
-        #}
-        
-      }
-      else{
-        return (TRUE)
-      }
-    })
-    #eventReactive(input$filter,{
-    #  if (tabs_value()=="Sequence"){
-    #    return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
-    #  }
-    #  else{
-    #    return (TRUE)
-    #  }
-    #})
-    #return (reactive({TRUE}))
-  }
+  file_row_idx <- reactive({
+    if (tabs_value()=="Sequence"){
+      return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,ab_info$ab_info_df))
+      
+    }
+    else{
+      return (TRUE)
+    }
+  })
+  
   
   displayed_table_rows <-reactiveValues(df=NULL)
   observe({
-    displayed_table_rows$df <- ab_info$ab_info_df[file_row_idx(ab_info$ab_info_df)(),]
+    displayed_table_rows$df <- ab_info$ab_info_df[file_row_idx(),]
   })
   
   
