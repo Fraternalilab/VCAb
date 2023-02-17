@@ -2140,8 +2140,8 @@ server <- function(input,output,session){
                                   <br> b) the correct column indicating if the chain is heavy or light chain
                                   (note: the chain must contain only the value of IGH, IGK, or IGL)")))
           } else {
-            #blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
-            blast_db_dir <- HV_bl
+            blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
+            #blast_db_dir <- HV_bl
             
             blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir) # return the dataframe of the complete result of the blast
             if (is.null(blast_df)==FALSE){
