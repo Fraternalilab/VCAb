@@ -826,6 +826,8 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
   
   h_numbering <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
   l_numbering <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  h_numbering <- h_numbering[h_numbering$residue!="-",]
+  l_numbering <- l_numbering[l_numbering$residue!="-",]
   h_numbering[,"IMGT_numbering_summary"] <-paste0(h_numbering$imgt_numbering,"(",h_numbering$VorC,")")
   l_numbering[,"IMGT_numbering_summary"] <-paste0(l_numbering$imgt_numbering,"(",l_numbering$VorC,")")
   
