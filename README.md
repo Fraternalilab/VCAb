@@ -3,7 +3,7 @@ This repository contains all the source code needed to generate the web interfac
 
 ## Access VCAb online
 
-VCAb can be accessed [online](https://fraternalilab.kcl.ac.uk/VCAb/). For documentation on how to use the website, please go to the [github wiki](https://github.com/Fraternalilab/VCAb/wiki).
+VCAb can be accessed [online](https://fraternalilab.cs.ucl.ac.uk/VCAb/). For documentation on how to use the website, please go to the [github wiki](https://github.com/Fraternalilab/VCAb/wiki).
 
 ## Generate local version of VCAb
 
