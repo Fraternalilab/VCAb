@@ -1274,10 +1274,8 @@ def keep_constant_domain (chain,v_c):
         chain.id=chain.id[0]
     return chain
 
-def generate_C_pdb (pdb_c,h_vc,l_vc,in_dir,out_dir):
+def generate_C_pdb (pdb_c,h,l,h_vc,l_vc,in_dir,out_dir):
     pdb=pdb_c[0:4]
-    h=pdb_c[5]
-    l=pdb_c[6]
 
 
 
@@ -1311,13 +1309,16 @@ def generate_C_pdb_total (df,in_dir,out_dir):
     error=[]
     for i in df.index:
         pdb_c=df.loc[i,'iden_code']
+        h=df.loc[i,'Hchain'].split(";")[0]
+        l=df.loc[i,'Lchain'].split(";")[0]
+        
         if os.path.exists(f"{out_dir}/{pdb_c}_C.pdb"):
             continue
 
         try:
             h_vc=df.loc[i,'H_coordinate_seq_VC_boundary']
             l_vc=df.loc[i,'L_coordinate_seq_VC_boundary']
-            generate_C_pdb (pdb_c,h_vc,l_vc,in_dir,out_dir)
+            generate_C_pdb (pdb_c,h,l,h_vc,l_vc,in_dir,out_dir)
 
         except:
             error.append(df.loc[i,:])
@@ -1334,8 +1335,8 @@ def generate_chain_pdb_total (df,in_dir,out_dir):
 
         try:
             pdb=pdb_c[0:4]
-            h=pdb_c[5]
-            l=pdb_c[6]
+            h=df.loc[i,'Hchain'].split(";")[0]
+            l=df.loc[i,'Lchain'].split(";")[0]
 
             parser = MMCIFParser()
             structure=parser.get_structure(pdb, f'{in_dir}/{pdb}.cif')
