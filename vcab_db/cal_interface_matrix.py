@@ -226,7 +226,7 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
 
     #num_info=num_df.loc[num_df["Id"]==id_code]
     num_info=num_df.loc[map(lambda x: x[0:6]==id_code,num_df["Id"])]
-    pure_num_info0=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0] not in["deleted","-"])]
+    pure_num_info0=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0] not in["deleted","-"]) and (type(val.values[0])==str)]
     # pure_num_info0 removes positions generating gaps(both "deleted" and. "-") in the coor_seq
     pure_num_info={numbering:[pure_pos,res] for pure_pos,(numbering,res) in enumerate(pure_num_info0)}
 
@@ -254,8 +254,11 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
     alned_coor_seq=pair_aln.seqB
 
     # Read POPS File
-    pops=read_pops_file(iden_code,pops_dir,if_C)[chainTypeNum]
-
+    try:
+        pops=read_pops_file(iden_code,pops_dir,if_C)[chainTypeNum]
+    except:
+        pops=None
+    
     # 2. Convert IMGT_num_pos into pure_pos of coor_seq
     # IMGT_num --> pure_pos (imgt_seq) -->aln_pos (imgt_seq)=aln_pos(coor_seq) -->pure_pos (coor_seq)
     result={}
@@ -290,12 +293,15 @@ def map_imgt_numbering_to_residue_info(iden_code,chainType,num_df,pdb_dir,pops_d
                 coor_seq_pure_pos=map_aln_pos_to_pure_seq_pos(coor_seq_aln_pos,alned_coor_seq)
 
                 res_obj=coor_seq_info[coor_seq_pure_pos]
-                if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
+                if pops is None:
+                    if_interface_res=np.nan
+                else:
+                    if_interface_res=len(pops.loc[(pops["ResidNe"]==res_obj.resname)&(pops["ResidNr"]==res_obj.id[1])])
                 result[i]=[res_obj,if_interface_res]
     if gap_included:
         gap_info=[(numbering,val.values[0]) for (numbering,val) in num_info.iloc[:,13:].items() if (val.values[0]=="-")]
         #record the original numbering order (gap included, don't include "deleted")
-        gap_included_num=[num for (num,res) in num_info.iloc[:,13:].items() if res.values[0]!="deleted"]
+        gap_included_num=[num for (num,res) in num_info.iloc[:,13:].items() if (res.values[0]!="deleted") and (type(res.values[0])==str)]
 
         for num,gap in gap_info:
             result[num]=["-",np.nan]
@@ -409,7 +415,7 @@ def combine_v_c_numbering (v_res_info,c_res_info):
 
     res_df["residue"]=[r if type(r)==str else r.resname for r in res_df["residue_obj"].values]
     res_df["res_code"]=[aa_names[r] if r in aa_names.keys() else "" for r in res_df["residue"].values]
-    res_df["pdb_numbering"]=[pd.NA if type(r)==str else r.id[1] for r in res_df["residue_obj"].values]
+    res_df["pdb_numbering"]=[pd.NA if type(r)==str else (str(r.id[1])+r.id[2]).strip() for r in res_df["residue_obj"].values]
 
     return res_df
 
