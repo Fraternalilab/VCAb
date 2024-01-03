@@ -11,12 +11,18 @@ library(shinyBS)
 library(shinyjs)
 library(reticulate)
 library (polished)
+library (plotly)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
 vcab_dir="../vcab_db/result/vcab_shiny.csv"
 pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
+
+# Change this later:
+pmut_dir <- "../mut_scan/rosetta/" # Change to the directory containing all the results
+abty_dir="../antiberty_pseudoLog/pseudo_log_likelihood_csv_melted/"
+almissense_dir <- "../AlphaMissense/alphaMissense_with_numbering/"
 
 
 # Directories of blast db:
@@ -181,7 +187,7 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region){
   t_df <- within(t_df,avg_ident <- if (is.null(H_df)) Perc.Ident.L else if (is.null(L_df)) Perc.Ident.H else (Perc.Ident.H+Perc.Ident.L)/2)
   t_df <- t_df[with(t_df,order(avg_ident,decreasing=TRUE)),] # sort the table based on avg_ident
   
-  rownames(t_df) <- NULL # reset the row index of df
+  rownames(t_df) <- NULL # reset the row index of df 
   
   if (ab_title==""){
     t_df <- t_df[,!(names(t_df) %in% c("avg_ident"))] # The column "avg_ident" would not be displayed
@@ -351,6 +357,7 @@ shinyInput <- function(FUN, len, id, ns, ...) {
   }
   inputs
 }
+
 
 # Add "show" button in every entry of the table
 addShow <- function(df,ns){
@@ -563,7 +570,8 @@ extracting_num_df <- function(iden_code,res_info_dir){
   lnum[,"insertion"] <- unlist(lapply(l_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
   
   return (list("hnum"=hnum,"lnum"=lnum))
-}
+} 
+
 
 generating_vc_num_info <- function(vcnum){
   # Generating the dataframe containing the information of the name of fragments
@@ -990,6 +998,129 @@ par = shinyjs.getParams(par, def_par);
 Shiny.onInputChange("decoded_url",decodeURIComponent(par.txt))
 }'
 
+region_color_lst <- list(FR1="#6BAED6",CDR1="#C6DBEF",
+                         FR2="#6BAED6",CDR2="#C6DBEF",
+                         FR3="#6BAED6",CDR3="#C6DBEF",
+                         FR4="#6BAED6",
+                         #""="#EF6548",
+                         "strand A"="#EF6548",
+                         "strand B"="#EF6548","BC turn"="#FDD49E",
+                         "strand C"="#EF6548","CD turn"="#FDD49E",
+                         "strand D"="#EF6548","DE turn"="#FDD49E",
+                         "strand E"="#EF6548",
+                         "strand F"="#EF6548", "FG loop"="#FDD49E", 
+                         "strand G"="#EF6548")
+
+produce_mut_scan_df <- function(num_df,mut_df,score_col){
+  # This function combines the numbering infomation with the mut_scan table (rosetta or antiberty)
+  # Outputted df will be used to draw the plot
+  colnames(mut_df)[colnames(mut_df)=="PDB_numbering"] <- "pdb_numbering"
+  colnames(mut_df)[colnames(mut_df)=="position"] <- "pdb_numbering"
+  
+  colnames(mut_df)[colnames(mut_df)=="WT_AA"] <- "wt_aa"
+  colnames(mut_df)[colnames(mut_df)=="MUT_AA"] <- "mut_aa"
+  mut_df$id <- 1:nrow(mut_df)
+  mut_num_df <- merge(mut_df,num_df,by="pdb_numbering")
+  mut_num_df <- mut_num_df[order(mut_num_df$id),]
+  
+  #abty_num_df <- abty_num_df[abty_num_df$VorC=="V",]
+  
+  mut_num_df$color <- lapply(mut_num_df$region,function(x){ifelse(x %in% names(region_color_lst), region_color_lst[[x]], "#EF6548") })
+  mut_num_df$banner_y <- 1
+  mut_num_df$normalized_score <- asinh(mut_num_df[[score_col]])
+  #abty_num_df$normalized_p <- asinh(abty_num_df$pseudolog_likelihood)
+  mut_num_df
+  
+}
+
+draw_mut_scan_plot <- function(mut_num_df,score_val,reverseColor){
+  # This function is used to produce the plot to draw the mut_scan plt, for rosetta and antiberty
+  # mut_num_df: the df containing both the score after mutation scanning and the numbering information, 
+  #             is the output of the function produce_mut_scan_df
+  # score_val: the value of the score which will be displayed when the user hover on the plt
+  # reverseColor: whether the color scheme for the value ploted would be reversed or not, can only be the value of T/F
+  
+  mut_num_highlight <- highlight_key(mut_num_df,~pdb_numbering)
+  maxValue <- max(c(max(mut_num_df$normalized_score),abs(min(mut_num_df$normalized_score))))
+  
+  base <- plot_ly(type="heatmap",mut_num_highlight) %>% 
+    group_by(pdb_numbering)
+  
+  mut_plt <- base %>%
+    group_by(pdb_numbering) %>%
+    add_heatmap(x=~pdb_numbering,y=~mut_aa,z=~normalized_score,
+                customdata=split(mut_num_df[,c("wt_aa","mut_aa","imgt_numbering",score_val)],seq_len(nrow(mut_num_df))),
+                hovertemplate=paste0("<b>Residue</b>:%{customdata.wt_aa}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>Mutation</b>:%{customdata.mut_aa}\n<b>",score_val,"</b>:\n%{customdata.",score_val,"}\n<extra></extra>"),
+                colorscale="RdBu",
+                zmin=-maxValue,
+                zmax=maxValue,
+                reversescale = reverseColor
+    ) %>%
+    layout(xaxis = list(
+      #rangeslider = list(type = "pdb_numbering"),
+      dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,categoryorder = "trace"
+    ),
+    yaxis=list(autorange="reversed",
+               categoryorder = "array",
+               categoryarray = c("A", "V", "I", "L", "M", "F","Y","W",
+                                 "S", "T", "N", "Q", "C", "G", "P",
+                                 "R", "H", "K", "D", "E"))
+    #,dragmode="select"
+    #,dragmode=FALSE
+    
+    ) %>%
+  hide_colorbar()
+  
+  banner_fig <- base %>%
+    add_markers(
+      x=~pdb_numbering,
+      y=~banner_y,
+      marker = list(color=~color,size=5,symbol="square"),
+      showlegend = F,
+      customdata=split(mut_num_df[,c("region","pdb_numbering","VorC","imgt_numbering","chain")],seq_len(nrow(mut_num_df))),
+      hovertemplate="<b>PDB numbering</b>:%{x}\n<b>region</b>:%{customdata.VorC}-%{customdata.region}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<extra></extra>"
+      
+      
+    )%>%
+    layout(xaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,categoryorder = "trace"
+    ),
+    #height=80,
+    #yaxis=list(range=c(0.5,1.5))
+    yaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE)
+    ,dragmode="select"
+    )
+  
+  combine_fig <- subplot(banner_fig, mut_plt, heights = c(.08, .92), nrows=2,shareX=TRUE) %>%
+    layout(showlegend = FALSE) %>%
+    highlight(on = "plotly_selected", dynamic = FALSE,off='plotly_deselect') #%>%
+  #onRender("
+  #    function(el,x){
+  #      $('#clear').on('click', function(){Plotly.restyle(graphDiv, {selectedpoints: [null]});});
+  #    }")
+  
+  combine_fig
+}
+
+
+clean_almissense_df <- function (almissense_df){
+  # This function is used to clean the alpha missense table, so that it is prepared to plot the banner
+  almissense_df$VorC <- "C"
+  almissense_df <-generating_vc_num_info(almissense_df)
+  almissense_df <- almissense_df[!(is.na(almissense_df["uniprot_id"])),]
+  
+  # Add color
+  color_map <- data.frame("region"=unique(almissense_df$region))
+  color_map["color"] <- c("#EF6548", "#EF6548", "#EF6548", "#FDD49E", "#EF6548","#FDD49E", "#EF6548", "#FDD49E", "#EF6548", "#EF6548", "#FDD49E", "#EF6548")
+  #color_map
+  almissense_df$id <- 1:nrow(almissense_df)
+  almissense_num_df=merge(almissense_df,color_map,by="region")
+  almissense_num_df$y <- 1
+  almissense_num_df=almissense_num_df[order(almissense_num_df$id),]
+  
+  almissense_num_df
+}
+
+
 ####################### UI #######################
 ui <- fluidPage(
   titlePanel(title=div(img(
@@ -1402,7 +1533,32 @@ ui <- fluidPage(
                                                       actionButton("clear_sele_disulfide","Clear selected residues"),
                                                       checkboxInput(inputId = "zoom_in_sele_disulfide",label="Zoom in to selected Cysteines",FALSE),
                                                       DT::dataTableOutput("disulfide_info")
-                                             )
+                                             ),
+                                             tabPanel("Mutation scanning",value="pmut_scan",
+                                                      br(),
+                                                      radioButtons(inputId="pmut_chain_tabs", label="Choose the chain to display:", 
+                                                                   choices=c("Heavy chain" = "Heavy",
+                                                                             "Light chain" = "Light"
+                                                                   )),
+                                                      #DT::dataTableOutput("pmut_num_table")#,
+                                                      tabsetPanel(id="mut_scan_plots",
+                                                                  tabPanel("Rosetta pmut",value="rosetta_mut",
+                                                                           plotlyOutput("rosetta_pmut_scan_plt")
+                                                                           ),
+                                                                  tabPanel("AntiBERTy pseudo-log likelihood",value="abty_mut",
+                                                                           plotlyOutput("antiberty_plt")
+                                                                           ),
+                                                                  tabPanel("AlphaMissense Pathogenicity",value="am_mut",
+                                                                           plotlyOutput("am_plt")
+                                                                           )
+                                                                  ),
+                                                      #DT::dataTableOutput("mut_selected_table")
+                                                      verbatimTextOutput('mut_selected_table')
+                                                       
+                                                      #
+                                          
+                                                      #plotOutput("rosetta_pmut_scan_plt")
+                                                      )
                                              
                                  )
                                )
@@ -2660,6 +2816,7 @@ server <- function(input,output,session){
       js$disableTab("Structural_Viewer")
       js$disableTab("Sequence_Coverage")
       js$disableTab("Sequence_numbering")
+      js$disableTab("pmut_scan")
       
     }
     else{
@@ -2669,10 +2826,14 @@ server <- function(input,output,session){
         
       }
       
+      # ADD SCRIPT HERE TO ENABLE THE APPERANCE OF PMUT_SCAN TAB
+      
       js$enableTab("H-L_interface_residues")
       js$enableTab("Disulfide_Bond")
       js$enableTab("Structural_Viewer")
       js$enableTab("Sequence_Coverage")
+      
+      js$enableTab("pmut_scan")
       
       
     }
@@ -2849,6 +3010,141 @@ server <- function(input,output,session){
     
   })
   
+  ###### TABPANEL: Show the result of pmut_scan ######
+  
+  ## Get the num_info for the pmut_scan tab
+  num_df_for_mut <- reactive({
+    iden_code <-struc_selected()
+    hlnum <- extracting_num_df(iden_code,res_info_dir)
+    chain_num_df=if (input$pmut_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum 
+    num_df <-generating_vc_num_info(chain_num_df)
+    num_df 
+  })
+  
+  ## Rosetta_pmut panel:
+  pmut_num_df<- reactive({
+    iden_code <-struc_selected()
+    
+    num_df <- num_df_for_mut()
+    
+    pmut_fn_horl <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    pmut_fn=paste0(pmut_dir,"/",pmut_fn_horl,"_result/",iden_code,"_pmut.csv")
+    pmut_df=read.csv(pmut_fn)
+    
+    colnames(pmut_df)[colnames(pmut_df)=="position"] <- "pdb_numbering"
+    pmut_num_df<- produce_mut_scan_df(num_df,pmut_df,"mean_ddG")
+    pmut_num_df
+    
+  })
+  output$rosetta_pmut_scan_plt <- renderPlotly({
+    pmut_num_df <- pmut_num_df()
+    draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+  })
+  
+  ## AntiBERTy pseudoLogLikelihood panel:
+  abty_num_df <- reactive({
+    iden_code <-struc_selected()
+    num_df <- num_df_for_mut()
+    
+    # Get the abty_pseudoLog_likelihood df
+    horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+    abty_csv=read.csv(abty_csv_fn) 
+    
+    abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
+    abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
+    abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
+    abty_num_df
+  })
+  
+  output$antiberty_plt <- renderPlotly({
+    abty_num_df <- abty_num_df()
+    draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
+  })
+  
+  ## Track the user-selected residues on mut_scan_plots to zoom-in in NGLVieweR
+  mut_selected_residues <- reactiveVal()
+  observe({
+    mut_selected_df <- event_data("plotly_selected")
+    
+    if (is.null(mut_selected_df)){
+      mut_selected_residues(NULL)
+    }else{
+      # Get the string for the zoom-in in the NGLViewer
+      mut_selected_df <- mut_selected_df$customdata
+      mut_position_str_vec <- unique(paste0 (mut_selected_df$pdb_numbering, ":", mut_selected_df$chain))
+      mut_p_str <- paste(mut_position_str_vec,collapse=' or ')
+      
+      selected_data <- if (substr(mut_p_str,1,1)==":") NULL else mut_p_str
+      mut_selected_residues(selected_data)
+    }
+    
+  })
+  observeEvent(input$mut_scan_plots,{
+    mut_selected_residues(NULL)
+  })
+  
+  observeEvent(input$pmut_chain_tabs,{
+    mut_selected_residues(NULL)
+  })
+  
+  ## AlphaMissense pathogenecity panel:
+  
+  output$am_plt <- renderPlotly({
+    # Get the abty_pseudoLog_likelihood df
+    iden_code <-struc_selected()
+    # Get the numbering information
+    #hlnum <- extracting_num_df(iden_code,res_info_dir)
+    #chain_num_df=if (input$pmut_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum 
+    
+    horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    
+    chaintype <- strsplit(vcab[vcab$iden_code==iden_code,"Htype"],"\\(")[[1]][1]
+    
+    almissense_fn <- paste0(almissense_dir,chaintype,"_am_with_numbering.csv")
+    
+    almissense_df <- read.csv(almissense_fn)
+    almissense_num_df <- clean_almissense_df(almissense_df)
+    
+    banner_fig_am <- plot_ly(x=almissense_num_df$WT_aa_position,y=almissense_num_df$y,type="scatter",mode="markers",#orientation='h',
+                             marker = list(color=almissense_num_df$color,size=5,symbol="square"),
+                             showlegend = F,
+                             customdata=split(almissense_num_df[,c("region","imgt_numbering","VorC")],seq_len(nrow(almissense_num_df))),
+                             hovertemplate="<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>region</b>:%{customdata.VorC}-%{customdata.region}<extra></extra>"
+    ) %>%
+      layout(xaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,
+                        categoryorder = "trace"),
+             #height=80,
+             #yaxis=list(range=c(0.5,1.5))
+             yaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE)
+             ,dragmode=FALSE
+      ) %>%
+      config(displayModeBar = F)
+    #banner_fig_am
+    almissense_plot <- plot_ly(type="heatmap",x=almissense_df$WT_aa_position,y=almissense_df$mut_aa,z=almissense_df$am_pathogenicity,
+                               #almissense_plot <- plot_ly(type="heatmap",x=almissense_df$imgt_numbering,y=almissense_df$mut_aa,z=almissense_df$am_pathogenicity,
+                               customdata=split(almissense_df[,c("WT_aa","mut_aa","imgt_numbering","am_pathogenicity","am_class")],seq_len(nrow(almissense_df))),
+                               hovertemplate="<b>Residue</b>:%{customdata.WT_aa}\n<b>Mutation</b>:%{customdata.mut_aa}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>am_pathogenicity</b>:\n%{customdata.am_pathogenicity}\n<b>predicted_pathogenicity</b>:\n%{customdata.am_class}\n<extra></extra>",
+                               colorscale="RdBu")%>%
+      layout(xaxis = list(
+        dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,
+        categoryorder = "trace"),
+        yaxis=list(autorange="reversed",
+                   categoryorder = "array",
+                   categoryarray = c("A", "V", "I", "L", "M", "F","Y","W",
+                                     "S", "T", "N", "Q", "C", "G", "P",
+                                     "R", "H", "K", "D", "E"))
+        ,dragmode=FALSE
+        
+      ) %>%
+      hide_colorbar() %>%
+      config(displayModeBar = F)
+    #almissense_plot
+    
+    combine_fig <- subplot(banner_fig_am,almissense_plot,nrows=2,shareX=TRUE,heights = c(0.08, 0.92))
+    combine_fig
+    
+  })
   
   
   
@@ -3220,7 +3516,11 @@ server <- function(input,output,session){
       `if`(!(is.null(brushed_all_residues$all)), zoomMove(.,center=brushed_all_residues$all,zoom=brushed_all_residues$all),.) %>%
       `if`(!(is.null(brushed_all_residues$all)), addRepresentation(., "cartoon", param = list(colorScheme = "element",colorValue = "grey",sele = paste("not(",brushed_all_residues$all,")"))),.) %>%
       
-      
+      `if`(!(is.null(mut_selected_residues())), zoomMove(.,center=mut_selected_residues(),zoom=mut_selected_residues()),.) %>%
+      `if`(multi_condition(!(is.null(mut_selected_residues())),input$pmut_chain_tabs=="Heavy"), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = mut_selected_residues())),.) %>%
+      `if`(multi_condition(!(is.null(mut_selected_residues())),input$pmut_chain_tabs=="Light"), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = mut_selected_residues())),.) %>%
+      `if`(!(is.null(mut_selected_residues())), addRepresentation(.,"label",param = list(sele = mut_selected_residues(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      #mut_selected_residues
       
       
       
