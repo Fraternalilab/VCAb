@@ -1,6 +1,8 @@
 # VCAb
 This repository contains all the source code needed to generate the web interface and assembling the available experimental antibody structure space (Antibodies containing both V and C regions).
 
+**branch `nextflow`**: Branch for wrapping all the code to generate VCAb in a nextflow pipeline. For now the pipeline is in file `vcab.nf`. All python code it imports (i.e. aside from the ones in the `.nf` file itself) needs to be in a `bin/` folder. To compile run `nextflow run vcab.nf` on the command line after setting up nextflow.
+
 ## Access VCAb online
 
 VCAb can be accessed [online](https://fraternalilab.cs.ucl.ac.uk/VCAb/). For documentation on how to use the website, please go to the [github wiki](https://github.com/Fraternalilab/VCAb/wiki).
