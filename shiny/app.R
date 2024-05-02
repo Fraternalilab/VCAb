@@ -20,9 +20,10 @@ f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
 # Change this later:
-pmut_dir <- "../mut_scan/rosetta/" # Change to the directory containing all the results
-abty_dir="../antiberty_pseudoLog/pseudo_log_likelihood_csv_melted/"
-almissense_dir <- "../AlphaMissense/alphaMissense_with_numbering/"
+pmut_dir <- "/Volumes/Elements/all_species_vcab/mut_scan/rosetta/" # Change to the directory containing all the results
+abty_dir="/Volumes/Elements/antiberty_pseudoLog/pseudo_log_likelihood_csv_melted/"
+abty_scaled_dir="/Volumes/Elements/antiberty_pseudoLog/pseudo_log_likelihood_csv_melted_scaled/"
+almissense_dir <- "/Volumes/Elements/AlphaMissense/alphaMissense_with_numbering/"
 
 
 # Directories of blast db:
@@ -1543,13 +1544,16 @@ ui <- fluidPage(
                                                       #DT::dataTableOutput("pmut_num_table")#,
                                                       tabsetPanel(id="mut_scan_plots",
                                                                   tabPanel("Rosetta pmut",value="rosetta_mut",
-                                                                           plotlyOutput("rosetta_pmut_scan_plt")
+                                                                           plotlyOutput("rosetta_pmut_scan_plt"),
+                                                                           downloadButton("download_rpmut",label="Download data for the plot")
                                                                            ),
                                                                   tabPanel("AntiBERTy pseudo-log likelihood",value="abty_mut",
-                                                                           plotlyOutput("antiberty_plt")
+                                                                           plotlyOutput("antiberty_plt"),
+                                                                           downloadButton("download_abty_plt",label="Download plot and data")
                                                                            ),
                                                                   tabPanel("AlphaMissense Pathogenicity",value="am_mut",
-                                                                           plotlyOutput("am_plt")
+                                                                           plotlyOutput("am_plt"),
+                                                                           downloadButton("download_am_plt",label="Download plot and data")
                                                                            )
                                                                   ),
                                                       #DT::dataTableOutput("mut_selected_table")
@@ -1817,6 +1821,7 @@ server <- function(input,output,session){
           
       })
     }
+    
     
     
     
@@ -3036,10 +3041,59 @@ server <- function(input,output,session){
     pmut_num_df
     
   })
-  output$rosetta_pmut_scan_plt <- renderPlotly({
+  
+  observe({
     pmut_num_df <- pmut_num_df()
-    draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+    rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+    
+    output$rosetta_pmut_scan_plt <- renderPlotly({
+      rosetta_pmut_scan_plt0
+    })
+    
+    # Make the rosetta_pmut_scan_plt downloadable for users
+    output$download_rpmut <- downloadHandler(
+      filename=function(){
+        iden_code <-struc_selected()
+        paste0(iden_code,"_rosetta_pmut_info",".zip")
+      },
+      content=function(f_name){
+        iden_code <-struc_selected()
+        
+        temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+        dir.create(temp_directory)
+        rpmut <- rosetta_pmut_scan_plt0
+        
+        plot_df <- apply(pmut_num_df,2,as.character)
+        
+        plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
+        write.csv(plot_df,file.path(temp_directory,plot_df_name))
+        
+        #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+        #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+        #file.copy(matrix_f_name,matrix_f_name_new)
+        #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+        #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+        #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+        #}
+        
+        # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
+        #if (!require("processx")) install.packages("processx")
+        #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+        #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+        #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+        #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
+        
+        zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+      },
+      contentType="application/zip"
+    )
+    
   })
+  
+  
+  
+  
+  
   
   ## AntiBERTy pseudoLogLikelihood panel:
   abty_num_df <- reactive({
@@ -3048,10 +3102,13 @@ server <- function(input,output,session){
     
     # Get the abty_pseudoLog_likelihood df
     horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
-    abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+    abty_csv_fn=paste0(abty_scaled_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+    
+    #abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
     abty_csv=read.csv(abty_csv_fn) 
     
-    abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
+    abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"scaled_pseudolog_likelihood")
+    #abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
     abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
     abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
     abty_num_df
@@ -3059,8 +3116,10 @@ server <- function(input,output,session){
   
   output$antiberty_plt <- renderPlotly({
     abty_num_df <- abty_num_df()
-    draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
+    draw_mut_scan_plot(abty_num_df,"scaled_pseudolog_likelihood",T)
+    #draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
   })
+  
   
   ## Track the user-selected residues on mut_scan_plots to zoom-in in NGLVieweR
   mut_selected_residues <- reactiveVal()
@@ -3603,6 +3662,7 @@ server <- function(input,output,session){
                              c("Color antigen chain in this pdb"="color_antigen",
                                "Show other ligand(s) in this pdb"="show_ligand",
                                "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"),selected=NULL)
+    
   }
   
   # When new tab is selected, initialize everything
