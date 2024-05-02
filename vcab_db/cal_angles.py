@@ -373,12 +373,15 @@ def combine_csvs(rf,cf):
     """
     common_files=[fn for fn in os.listdir(rf) if os.path.exists(f"{cf}/{fn}") and (".csv" in fn)]
     for f in common_files:
-        df1=pd.read_csv(f"{rf}/{f}").drop(columns=["Unnamed: 0"])
-        df2=pd.read_csv(f"{cf}/{f}").drop(columns=["Unnamed: 0"])
+        df1=pd.read_csv(f"{rf}/{f}")
+        df2=pd.read_csv(f"{cf}/{f}")
+        if "Unnamed: 0" in df1.columns:
+            df1=df1.drop(columns=["Unnamed: 0"])
+        if "Unnamed: 0" in df2.columns:
+            df2=df2.drop(columns=["Unnamed: 0"])
         df3=pd.concat([df1,df2]).reset_index(drop=True)
-        if "Unnames: 0" in df3.columns:
+        if "Unnamed: 0" in df3.columns:
             df3=df3.drop(columns=["Unnamed: 0"])
-
         df3.to_csv(f"{rf}/{f}")
 
 if __name__=="__main__":

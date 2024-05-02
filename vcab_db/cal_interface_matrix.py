@@ -472,6 +472,11 @@ vcab=pd.read_csv("./result/final_vcab.csv").drop(columns=["Unnamed: 0"])
 
 vhnum=pd.read_csv("./result/num_result/vnumbering_H.csv")
 vlnum=pd.read_csv("./result/num_result/vnumbering_KL.csv")
+"""new_vhnum=pd.read_csv("./num_result/vnumbering_H.csv")
+new_vlnum=pd.read_csv("./num_result/vnumbering_KL.csv")
+vhnum=pd.concat([vhnum,new_vhnum],ignore_index=True)
+vlnum=pd.concat([vlnum,new_vlnum],ignore_index=True)"""
+
 if "Unnamed: 0" in vhnum.columns:
     vhnum=vhnum.drop(columns=["Unnamed: 0"])
 if "Unnamed: 0" in vlnum.columns:
@@ -479,6 +484,10 @@ if "Unnamed: 0" in vlnum.columns:
 
 hcnum=pd.read_csv("./result/num_result/cnumbering_H_C1.csv")
 lcnum=pd.read_csv("./result/num_result/cnumbering_KL_C.csv")
+"""new_hcnum=pd.read_csv("./num_result/cnumbering_H_C1.csv")
+new_lcnum=pd.read_csv("./num_result/cnumbering_KL_C.csv")
+hcnum=pd.concat([hcnum,new_hcnum],ignore_index=True)
+lcnum=pd.concat([lcnum,new_lcnum],ignore_index=True)"""
 if "Unnamed: 0" in hcnum.columns:
     hcnum=hcnum.drop(columns=["Unnamed: 0"])
 if "Unnamed: 0" in lcnum.columns:

@@ -829,7 +829,8 @@ def determine_v_species_type (v_bl, iden_code, o_pdb_species, HorL,c_alleles,cut
 
             if nhm_cdr12_match > hm_cdr12_match:
                 #return (f"Humanized:{pdb_species};{bl_species}",f"{pdb_species}|{pdb_alleles}: Per.Ident: {pdb_identity};{bl_species}|{bl_alleles}: Per.Ident: {bl_identity}",bl_alternative_v)
-                return (f"Humanized",f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",bl_alternative_v)
+                #return (f"Humanized",f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",bl_alternative_v)
+                return (f"Humanized:{pdb_species};{bl_species}",f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",bl_alternative_v)
             else:
                 # first_species is human in this case
                 return (first_species,f"{first_species}|{first_species_alleles}: Per.Ident: {first_species_identity}",first_species_alternative_v)
@@ -1851,7 +1852,7 @@ if __name__=="__main__":
     #flt_hbl=pd.read_csv("./blast_result/flt_bl_result/flt_h_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
     #flt_lbl=pd.read_csv("./blast_result/flt_bl_result/flt_l_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
 
-    cHL=pd.read_csv("final_collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
+    #cHL=pd.read_csv("final_collapsed_paired_ab.csv").drop(columns=["Unnamed: 0"])
     iso_vcab=add_all_domain_species_type (cHL,flt_vhbl,flt_vlbl,flt_hbl,flt_lbl,8,8,8,8,collapsed_v_alleles,collapsed_c_alleles)
     iso_vcab.to_csv("iso_vcab.csv")
 
@@ -1892,6 +1893,14 @@ if __name__=="__main__":
     print("adding species")
     # For test:
     #vcab0=pd.read_csv("disul_vcab.csv").drop(columns=["Unnamed: 0"])
+    #flt_vhbl=pd.read_csv("./blast_result/flt_bl_result/vh_bl_15.csv").drop(columns=["Unnamed: 0"])
+    #flt_vlbl=pd.read_csv("./blast_result/flt_bl_result/vl_bl_15.csv").drop(columns=["Unnamed: 0"])
+
+    #flt_hbl=pd.read_csv("./blast_result/flt_bl_result/flt_h_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+    #flt_lbl=pd.read_csv("./blast_result/flt_bl_result/flt_l_seq_bl_result.csv").drop(columns=["Unnamed: 0"])
+    #collapsed_v_alleles=json.load(open("../seq_db/ref_db/all_species_collapsed_v_alleles.json","r"))
+    #collapsed_c_alleles=json.load(open("../seq_db/ref_db/all_species_collapsed_c_alleles.json","r"))
+    
     vcab1=assign_species_summary(vcab0,flt_vhbl,flt_vlbl,collapsed_v_alleles,c_vh=8,c_vl=8)
     vcab=further_classify_ambiguous(vcab1,flt_vhbl,flt_hbl,flt_vlbl,flt_lbl)
     vcab.to_csv("./vcab.csv")
@@ -1921,4 +1930,4 @@ if __name__=="__main__":
 
 
     os.system("python cal_angles_new.py")
-    #os.system("python cal_interface_matrix_new.py")
+    os.system("python cal_interface_matrix_new.py")

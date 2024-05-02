@@ -57,6 +57,7 @@ def collect_all_seq_info (fn,o_fn=None):
         pdbc=title_lst[0]
         pdb=pdbc.split("_")[0]
         chainid=pdbc.split("_")[1]
+        
 
         if pdb not in result.keys():
             result[pdb]={chainid:seq}
@@ -342,6 +343,7 @@ if __name__=="__main__":
     print ("start")
     today=date.today()
     update_date=today.strftime("%d%m%Y")
+    
     downloaded_pdb_seqs=f"pdb_seqres_{update_date}.txt" # The file name (with directory) of the downloaded pdb seqs
     protein_pdb_seqs=f"pdb_protein_seqs_updated_{update_date}.json" # The output file name (with directory) of the filtered protein pdb seqs(contain only the newly added one)
 
@@ -359,7 +361,7 @@ if __name__=="__main__":
         os.system("mv ../seq_db/vcab_db/*.fasta ../seq_db/vcab_db/fasta")
 
     # Download PDB seqs:
-    urllib.request.urlretrieve('https://ftp.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz',f"pdb_seqres_{update_date}.txt.gz")
+    urllib.request.urlretrieve('https://files.wwpdb.org/pub/pdb/derived_data/pdb_seqres.txt.gz',f"pdb_seqres_{update_date}.txt.gz")
     os.system(f"gzip -d pdb_seqres_{update_date}.txt.gz")
 
     # Check if the old pdb sequence file existed
@@ -376,16 +378,28 @@ if __name__=="__main__":
     cnum_out=f"num_result/cnumbering"
 
 
+    # Collect the newly added pdb sequences
     pdb_seq_dict=collect_all_seq_info (downloaded_pdb_seqs,old_pdb_seq_fn)
     with open(protein_pdb_seqs, "w") as outfile:
         json.dump(pdb_seq_dict, outfile)
+        
+    # Remove the old pdb_seqres file
+    os.system(f"rm {old_pdb_seq_fn}")
+    
+    # load json file
+    print ("loading protein pdb seqs")
+    with open(protein_pdb_seqs, "r") as infile:
+        pdb_seq_dict = json.load(infile)
 
     print ("numbering V&C")
     # Transfer the pdb_seq_dict into the list of tuples:[(seqid,seq)], where seqid is "pdbid_chainid"
-    pdb_seq_tuple_lst=[(pdbid+"_"+chainid,str(seq)) for pdbid, info in pdb_seq_dict.items() for chainid,seq in info.items()]
+    #pdb_seq_tuple_lst=[(pdbid+"_"+chainid,str(seq)) for pdbid, info in pdb_seq_dict.items() for chainid,seq in info.items()]
+    pdb_seq_tuple_lst=[(pdbid+"_"+chainid,str(seq)) for pdbid, info in pdb_seq_dict.items() if pdbid !="8phw" for chainid,seq in info.items()]
+    
     v_result=run_anarci( pdb_seq_tuple_lst, ncpu=1,scheme="imgt", database="ALL", allow=set(["H","K","L"]),assign_germline=True,allowed_species=None,output=True,csv=True,outfile=vnum_out)
     c_result=run_anarci( pdb_seq_tuple_lst, ncpu=1,scheme="imgt_c", database="C_ONLY", allow=set(["H","K","L","H_C1","K_CC","L_CC"]),allowed_species=None,output=True,csv=True,outfile=o_cnum_out)
-
+    #print ("v_result:",v_result)
+    #print ("c_result:",c_result)
 
     # Read the numbering csv files
     hvn=pd.read_csv(f"{vnum_out}_H.csv")
@@ -394,8 +408,8 @@ if __name__=="__main__":
     lcn=pd.read_csv(f"{o_cnum_out}_KL_C.csv")
 
     # Re-order the columns of c-numbering results
-    hcnum=df_column_switch(hcn, [("15B","15A"),("45B","45A")])
-    lcnum=df_column_switch(lcn, [("15B","15A"),("45B","45A")])
+    hcnum=df_column_switch(hcn, [("15B","15A"),("45B","45A"),("45D","45C")])
+    lcnum=df_column_switch(lcn, [("15B","15A"),("45B","45A"),("45D","45C")])
     hcnum.to_csv(f"{cnum_out}_H_C1.csv",index=False)
     lcnum.to_csv(f"{cnum_out}_KL_C.csv",index=False)
 
