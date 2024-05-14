@@ -1754,6 +1754,35 @@ def combine_fastas(rf,cf):
 
             os.system(f"cat {rf}/{f} {cf}/{f} > {cf}/combined_{f}")
             os.system(f"mv {cf}/combined_{f} {rf}/{f}")
+            
+def extract_hit_bl_result_for_shiny (bl_df,horltype,df):
+    # extract only the bl_result of the hit chain type (when the hit chain type is known)
+    # bl_df: the blast result dataframe to be extracted
+    # horltype can only be "Htype" or "Ltype"
+    # df: vcab
+    new_bl_lst=[]
+    for i in df.index:
+        iden_code=df.loc[i,"iden_code"]
+        ctype=df.loc[i,horltype]
+        allele_info=ctype.split("(")[1]
+        if "," in allele_info:
+            species_allele=allele_info.split(",")[0]
+            species,allele=species_allele.split("|")
+            species=species.capitalize()
+        else:
+            species_allele=allele_info.split(":")[0]
+            species,allele=species_allele.split("|")
+            species=species.capitalize()
+        
+        try:
+            sub_bl_df=pd.DataFrame(bl_df.loc[(bl_df["iden_code"]==iden_code)&(bl_df["matched_alleles"]==allele)&(bl_df["species"]==species)].iloc[0,]).T
+            new_bl_lst.append(sub_bl_df)
+        except:
+            print (iden_code,allele,species)
+            continue
+        
+    new_bl=pd.concat(new_bl_lst).drop_duplicates().reset_index(drop=True)
+    return new_bl
 
 ############################ Apply the functions ############################
 if __name__=="__main__":
@@ -1926,6 +1955,17 @@ if __name__=="__main__":
     combine_fastas("../seq_db/vcab_db/fasta","../seq_db/vcab_db")
 
     os.system ("sh mk_vcab_bl_db.sh")
+    
+    print ("extracting the best blast hits for shiny app")
+    bhbl=extract_hit_bl_result_for_shiny (hbl,"Htype",vcab)
+    blbl=extract_hit_bl_result_for_shiny (lbl,"Ltype",vcab)
+    bhbl_coor=extract_hit_bl_result_for_shiny (hcoorbl,"Htype",vcab)
+    blbl_coor=extract_hit_bl_result_for_shiny (lcoorbl,"Ltype",vcab)
+    
+    bhbl.to_csv(f"./blast_result/best_h_seq_bl_result.csv")
+    blbl.to_csv(f"./blast_result/best_l_seq_bl_result.csv")
+    bhbl_coor.to_csv(f"./blast_result/best_h_coordinate_seq_bl_result.csv")
+    blbl_coor.to_csv(f"./blast_result/best_l_coordinate_seq_bl_result.csv")
 
 
 
