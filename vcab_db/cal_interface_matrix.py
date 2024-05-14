@@ -10,6 +10,11 @@ import math
 from datetime import date
 import json
 
+from tqdm import tqdm
+
+from scipy.spatial.distance import pdist
+from scipy.spatial.distance import squareform
+
 aa_names= {'CYS': 'C', 'ASP': 'D', 'SER': 'S', 'GLN': 'Q', 'LYS': 'K',
      'ILE': 'I', 'PRO': 'P', 'THR': 'T', 'PHE': 'F', 'ASN': 'N',
      'GLY': 'G', 'HIS': 'H', 'LEU': 'L', 'ARG': 'R', 'TRP': 'W',
@@ -338,60 +343,27 @@ def exclude_mtrx_not_calculated(o_df,fn):
     df=df.reset_index(drop=True)
     return df
 
-def cal_distance_between_matrix (ab1,ab2,mtrx_dir):
-    # both ab1 and ab2 are iden_code
-    if os.path.exists(f"{mtrx_dir}/{ab1}_interface_dist_mtrx.txt") is False or \
-        os.path.exists(f"{mtrx_dir}/{ab2}_interface_dist_mtrx.txt") is False:
-        return np.nan
-    m1=np.loadtxt(f"{mtrx_dir}/{ab1}_interface_dist_mtrx.txt",dtype=float)
-    m2=np.loadtxt(f"{mtrx_dir}/{ab2}_interface_dist_mtrx.txt",dtype=float)
-    assert m1.shape==m2.shape,"Arrays must have the same size"
+# load all mtrx of vcab
+def load_all_mtrx(abs_lst, mtrx_dir):
+    
+    result_lst=[]
+    collected_abs=[]
+    for ab in tqdm(abs_lst):
+        if os.path.exists(f"{mtrx_dir}/{ab}_interface_dist_mtrx.txt"):
+            this_mtrx=np.loadtxt(f"{mtrx_dir}/{ab}_interface_dist_mtrx.txt",dtype=float).flatten()
+            result_lst.append(this_mtrx)
+            collected_abs.append(ab)
+    return collected_abs,np.stack(result_lst)
 
-    item_diff=m1-m2
-    item_diff_square=item_diff*item_diff
-    item_diff_square_sum=item_diff_square.sum()
-    dist=math.sqrt(item_diff_square_sum)
-    return dist
-
-def generate_dm_of_interface_dm(df,mtrx_dir):
-
-    result = np.zeros((len(df), len(df)), float)
-    for r_counter,row in enumerate(df.index):
-        ab1=df.loc[row,"iden_code"]
-        for col in list(df.index)[r_counter+1:]:
-            # So that it will only calculate half of the dm matrix, because the matrix is symmetrical
-            ab2=df.loc[col,"iden_code"]
-            result[row,col]=cal_distance_between_matrix (ab1,ab2,mtrx_dir)
-    labels={i:list(df.loc[i,["iden_code","Htype","Ltype"]].values) for i in df.index}
-    return result,labels
-
-def update_dm_of_interface_dm(df,old_mtrx_df_fn,mtrx_dir):
-    # df: vcab, old_mtrx_df_fn: the csv file name of old dm_of_dm
-    result = np.zeros((len(df), len(df)), float)
-    old_mtrx_df=pd.read_csv(old_mtrx_df_fn).drop(columns=["Unnamed: 0"])
-
-    old_mtrx=old_mtrx_df.to_numpy()
-
-    # incorporate the old matrix as the part of new results
-    result[:old_mtrx.shape[0],:old_mtrx.shape[1]]=old_mtrx
-
-    # Find the newly added VCAb entries
-    old_abs=list(old_mtrx_df.columns)
-    new_abs=list(df["iden_code"].values)
-    added_abs=[i for i in new_abs if i not in old_abs]
-
-    new_abs_ordered=old_abs+added_abs # order the abs: old_abs first, then added_abs
-
-    for row,ab1 in enumerate(new_abs_ordered):
-        for col,ab2 in enumerate(new_abs_ordered):
-            if row < len(old_abs) and col < len(old_abs):
-                # skip the values in old matrix
-                continue
-            if col > row:
-                result[row,col]=cal_distance_between_matrix (ab1,ab2,mtrx_dir)
-
-    labels={i:[new_abs_ordered[i]]+list(df.loc[df["iden_code"]==new_abs_ordered[i],["Htype","Ltype"]].values[0]) for i in range(len(new_abs_ordered))}
-    return result,labels
+def generate_dm_of_dm (df,mtrx_dir):
+    """
+    Generate complete distance matrix of distance matrix for all antibodies in VCAb, if the interface matrix exists.
+    """
+    all_abs=list(df["iden_code"].values)
+    collected_abs, collected_mtrx=load_all_mtrx(all_abs, mtrx_dir)
+    dm_of_dm=pdist(collected_mtrx)
+    dm_of_dm_df=pd.DataFrame(squareform(dm_of_dm),index=collected_abs,columns=collected_abs)
+    return dm_of_dm_df
 
 ######### FUNCTIONS TO GENERATE RES_INFO & COMPLETE DISTANCE MATRIX ###########
 def combine_v_c_numbering (v_res_info,c_res_info):
@@ -472,10 +444,10 @@ vcab=pd.read_csv("./result/final_vcab.csv").drop(columns=["Unnamed: 0"])
 
 vhnum=pd.read_csv("./result/num_result/vnumbering_H.csv")
 vlnum=pd.read_csv("./result/num_result/vnumbering_KL.csv")
-"""new_vhnum=pd.read_csv("./num_result/vnumbering_H.csv")
+new_vhnum=pd.read_csv("./num_result/vnumbering_H.csv")
 new_vlnum=pd.read_csv("./num_result/vnumbering_KL.csv")
 vhnum=pd.concat([vhnum,new_vhnum],ignore_index=True)
-vlnum=pd.concat([vlnum,new_vlnum],ignore_index=True)"""
+vlnum=pd.concat([vlnum,new_vlnum],ignore_index=True)
 
 if "Unnamed: 0" in vhnum.columns:
     vhnum=vhnum.drop(columns=["Unnamed: 0"])
@@ -502,7 +474,7 @@ total_pops_dir="../pops/total_result/"
 
 mtrx_out_dir="../ch1_cl_interface_matrix/matrix_results/"
 complete_mtrx_dir="../ch1_cl_interface_matrix/complete_matrix"
-res_info_out_dir="../res_info"
+res_info_out_dir="../res_info/"
 #os.system("sh ../ch1_cl_interface_matrix/check_folders.sh")
 
 print ("Calculating interface matrix")
@@ -528,19 +500,8 @@ print ("Calculating distance matrix of interface matrices")
 flt_vcab=exclude_mtrx_not_calculated(vcab,"../ch1_cl_interface_matrix/mtrx_not_calculated.txt")
 # exclude the VCAb entries with no interface matrix (mainly because the POPSComp result is not available for the solution scattering method)
 
-dm,ab_info_label=("","")
-# if file exists, update the matrix; else, calculate the matrix from scratch:
-if os.path.exists("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"):
-    dm,ab_info_label=update_dm_of_interface_dm(vcab,"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv",mtrx_out_dir)
-else:
-    dm,ab_info_label=generate_dm_of_interface_dm(vcab,mtrx_out_dir)
-np.savetxt(f"../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.txt",dm,fmt='%10.5f')
 
-print ("Storing matrix into csv")
-with open('../ch1_cl_interface_matrix/dm_of_dm_label.json', 'w') as fp:
-    json.dump(ab_info_label, fp)
-
-dm_df=pd.DataFrame(dm,columns=[ab_info_label[k][0] for k in ab_info_label.keys()],index=[ab_info_label[k][0] for k in ab_info_label.keys()])
+dm_df=generate_dm_of_dm (vcab,mtrx_out_dir)
 dm_df.to_csv("../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv")
 
 # Generate res_info
@@ -548,7 +509,7 @@ print ("calculating res info")
 total_int_mtrx_not_calculated=[]
 for i in vcab.index:
     iden_code=vcab.loc[i,"iden_code"]
-    if os.path.exists(f"{n_out_dir}/{iden_code}_H_res_info.csv"):
+    if os.path.exists(f"{res_info_out_dir}/{iden_code}_H_res_info.csv"):
         # skip the precalcuated res_info
         continue
 
