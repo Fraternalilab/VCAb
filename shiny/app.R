@@ -14,16 +14,15 @@ library (polished)
 library (plotly)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/result/vcab_shiny.csv"
+vcab_dir="../vcab_db/result/final_vcab.csv"
 pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
-# Change this later:
-pmut_dir <- "/Volumes/Elements/all_species_vcab/mut_scan/rosetta/" # Change to the directory containing all the results
-abty_dir="/Volumes/Elements/antiberty_pseudoLog/pseudo_log_likelihood_csv_melted/"
-abty_scaled_dir="/Volumes/Elements/antiberty_pseudoLog/pseudo_log_likelihood_csv_melted_scaled/"
-almissense_dir <- "/Volumes/Elements/AlphaMissense/alphaMissense_with_numbering/"
+
+pmut_dir <- "../mut_scan/rosetta/" 
+abty_scaled_dir="../mut_scan/antiberty/"
+almissense_dir <- "../mut_scan/alphaMissense/"
 
 
 # Directories of blast db:
@@ -522,30 +521,14 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   
 }
 
+
 get_similar_interface <- function(iden_code,dm_df){
-  withProgress("Searching through VCAb to find antibodies with similar CH1-CL interface...",value=0,
-               {
-                 sub_df_row=dm_df[dm_df$X==iden_code,!(names(dm_df) %in% c("X"))]
-                 rownames(sub_df_row) <- NULL
-                 t_sub_df_row=t(sub_df_row) # first extract the rows, then transpose the df into column
-                 rownames(t_sub_df_row) <- lapply(rownames(t_sub_df_row),function(x){substring(x,2)})
-                 colnames(t_sub_df_row) <- c("row_extraction")
-                 
-                 sub_df_col=data.frame(col_extraction=dm_df[,paste0("X",iden_code)])
-                 rownames(sub_df_col) <- dm_df$X
-                 
-                 sub_df <- cbind(t_sub_df_row,sub_df_col) # combine the distance listed in the row (iden_code) and col(Xiden_code)
-                 sub_df$o_interface_difference_index <- apply(sub_df,1,max) # The max value of the row_extraction and col_extraction is the interface_diff_index
-                 sub_df$interface_difference_index <- unlist(lapply(sub_df$o_interface_difference_index,function(x){round(x,2)}))
-                 similar_interface_df <- head(sub_df[order(sub_df$interface_difference_index),],11)
-                 similar_interface_df$iden_code <- rownames(similar_interface_df)
-                 
-                 similar_interface_df<- similar_interface_df[,c("iden_code","interface_difference_index")]
-                 rownames(similar_interface_df) <- NULL
-                 names(similar_interface_df)[2]<-"interface.difference.index"
-                 return (similar_interface_df)
-               }
-               )
+  col_name <- paste0("X",iden_code)
+  similar_abs_df <- dm_df[order(dm_df[[col_name]]),c("X",col_name),drop=FALSE][1:11,,drop=FALSE]
+  
+  names(similar_abs_df) <- c("iden_code","interface.difference.index")
+  similar_abs_df$interface.difference.index <- unlist(lapply(similar_abs_df$interface.difference.index,function(x){round(x,2)}))
+  return (similar_abs_df)
   
 }
 
@@ -1152,11 +1135,12 @@ ui <- fluidPage(
                                                                tabPanel("Features",
                                                                         column(5,
                                                                                 selectInput("species","Species: ",choices=c("All",unique(vcab$Species)),
-                                                                                            label=helper(shiny_tag = "Species:       r", colour = "royalblue2",
+                                                                                            label=helper(shiny_tag=HTML(paste("Species:"),HTML('&emsp;')), 
+                                                                                                         colour = "royalblue2",
                                                                                               type="inline",title="Species",content=c("Species annotation for the antibody."))
                                                                                             ),
                                                                                 selectInput("iso_txt","Isotype:",
-                                                                                            label=helper(shiny_tag="Isotype:        r",color="royalblue2",
+                                                                                            label=helper(shiny_tag=HTML(paste("Isotype:"),HTML('&emsp;')),color="royalblue2",
                                                                                                          type="inline",title="Isotype", 
                                                                                                          content=c("Isotypes are classified by the sequence of C region on H chain.",
                                                                                                                    "Each isotype has different function.")
@@ -1166,7 +1150,8 @@ ui <- fluidPage(
                                                                                 
                                                                                 selectInput("Ltype_txt","Light chain type:",
                                                                                             label=helper(
-                                                                                              shiny_tag="Light chain type:        r",color="royalblue2",
+                                                                                              shiny_tag=HTML(paste("Light chain type:"),HTML('&emsp;')),
+                                                                                              color="royalblue2",
                                                                                               type="inline",title="Light chain type", 
                                                                                               content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")
                                                                                             ),
@@ -1174,7 +1159,8 @@ ui <- fluidPage(
                                                                                             ),
                                                                                 selectInput("struc_cov","Structural Coverage:",
                                                                                             label=helper(
-                                                                                              shiny_tag="Structural Coverage:        r",color="royalblue2",
+                                                                                              shiny_tag=HTML(paste("Structural Coverage:"),HTML('&emsp;')),
+                                                                                              color="royalblue2",
                                                                                               type="inline", title="Structural Coverage",
                                                                                               content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
                                                                                                         "Full antibody covers both Fab and Fc region")
@@ -1332,7 +1318,7 @@ ui <- fluidPage(
                                                                         
                                                                ),
                                                                tabPanel("CH1-CL Interface",
-                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
+                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 1 minute for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
                                                                         br(),br(),
                                                                         selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
                                                                                        options=list(maxOptions =5,
@@ -1541,6 +1527,8 @@ ui <- fluidPage(
                                                                    choices=c("Heavy chain" = "Heavy",
                                                                              "Light chain" = "Light"
                                                                    )),
+                                                      br(),
+                                                      HTML("<b>Note:</b> <em>You can select a region on the residue strip (by dragging a box on the strip) above the heatmap to zoom into the selected fragment in 3D viewer, double click to unselect</em>"),
                                                       #DT::dataTableOutput("pmut_num_table")#,
                                                       tabsetPanel(id="mut_scan_plots",
                                                                   tabPanel("Rosetta pmut",value="rosetta_mut",
@@ -1639,6 +1627,19 @@ ui <- fluidPage(
                       br(),br(),br()
                       
              ),
+             tabPanel("Documentation",
+                      navlistPanel( widths = c(3,9),
+                        tabPanel("Home",includeHTML("www/Home.html")),
+                        tabPanel("Query Input",includeHTML("www/Query-Input.html")),
+                        tabPanel("In silico mutational scanning",includeHTML("www/In-silico-mutational-scanning-profile.html")),
+                        tabPanel("Antibody Information",includeHTML("www/Antibody-Information.html")),
+                        tabPanel("Interactive 3D Structure Viewer and Sequence Viewer",includeHTML("www/Interactive-3D-Structure-Viewer-and-Sequence-Viewer.html")),
+                        tabPanel("Assemble a collection of antibody structures",includeHTML("www/Antibody-structural-space.html"))
+                        
+                      )
+               
+             ),
+             
              tabPanel("About",
                       h5(paste0("Version: ", release)),
                       br(),
@@ -1662,10 +1663,11 @@ ui <- fluidPage(
                          
                          Researchers interested in antibody annotations and structures would benefit from the VCAb web server, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues.
                           <br><br><br>"
-                        
-                           ),
-                           br()
-             )	     
+                           
+                      ),
+                      br()
+             )
+             	     
   )
   
 )
@@ -2142,6 +2144,7 @@ server <- function(input,output,session){
           
         }
         else{
+          
           # If there is only one chain inputted by the user
           
           # Find out which db should be used for blast:
@@ -2151,8 +2154,10 @@ server <- function(input,output,session){
           blast_f_db <- ifelse(input$seq_type == "Hseq",VCAbH_bl,ifelse(input$seq_type == "Lseq",VCAbL_bl,all_ref_bl)) # the full_seq db
           blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
           
+          this_seq <- input$seq_txt
           # BLAST:
-          blast_df <- generate_blast_result(input$seq_txt,blast_db_dir) # return the dataframe of the complete result of the blast
+          blast_df <- generate_blast_result(this_seq,blast_db_dir) # return the dataframe of the complete result of the blast
+          
           if (is.null(blast_df)==FALSE){
             #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
             VCAb_blast_df <- blast_df
@@ -2164,7 +2169,7 @@ server <- function(input,output,session){
                 showModal(modalDialog(title="Are you sure you select the correct chain type?", "The Perc. Ident for the top hits are too low, 
                                       you might want to use the 'Don't know' option to further confirm the chain type of this sequence."))
               }
-              }
+            }
             
             # Record the order of the blast result
             VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
@@ -2184,7 +2189,7 @@ server <- function(input,output,session){
               ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
             }
             
-            }
+          }
           
           
           
