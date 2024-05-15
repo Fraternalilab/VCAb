@@ -14,6 +14,7 @@ library (polished)
 library (plotly)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
+#vcab_dir="../vcab_db/result/vcab_shiny.csv"
 vcab_dir="../vcab_db/result/final_vcab.csv"
 pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
@@ -113,6 +114,7 @@ check_usr_inputted_seq <- function(o_seq){
     str_seq_vec=gsub(" ","",str_seq_vec[[1]])
     title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"test_seq")
     str_seq=ifelse(title=="test_seq",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
+    str_seq=str_seq
     
     if (grepl("b",tolower(str_seq)) || grepl("j",tolower(str_seq))|| grepl("o",tolower(str_seq))|| grepl("u",tolower(str_seq))|| grepl("x",tolower(str_seq))|| grepl("z",tolower(str_seq))){
       showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
@@ -522,12 +524,15 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
 }
 
 
+
 get_similar_interface <- function(iden_code,dm_df){
-  col_name <- paste0("X",iden_code)
-  similar_abs_df <- dm_df[order(dm_df[[col_name]]),c("X",col_name),drop=FALSE][1:11,,drop=FALSE]
+  col_name <- iden_code
+  title_col="...1"
+  similar_abs_df <- dm_df[order(dm_df[col_name]),c(title_col,col_name),drop=FALSE][1:11,,drop=FALSE]
   
   names(similar_abs_df) <- c("iden_code","interface.difference.index")
-  similar_abs_df$interface.difference.index <- unlist(lapply(similar_abs_df$interface.difference.index,function(x){round(x,2)}))
+  similar_abs_df <- as.data.frame(similar_abs_df)
+  similar_abs_df$interface.difference.index <- unlist(lapply(similar_abs_df$interface.difference.index,function(x){round(x,3)}))
   return (similar_abs_df)
   
 }
@@ -1318,7 +1323,7 @@ ui <- fluidPage(
                                                                         
                                                                ),
                                                                tabPanel("CH1-CL Interface",
-                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 1 minute for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
+                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
                                                                         br(),br(),
                                                                         selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
                                                                                        options=list(maxOptions =5,
@@ -2253,7 +2258,8 @@ server <- function(input,output,session){
       }
       else{
         dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
-        dm_df=read.csv(dm_dir)
+        dm_df=readr::read_csv(dm_dir,col_select=c("...1",iden_code),show_col_types = FALSE)
+        #dm_df=read.csv(dm_dir)
         interface_info <- get_similar_interface(iden_code,dm_df)
         total_table <- generate_total_info(interface_info,ns)
         ab_info$ab_info_df <- total_table
@@ -3039,59 +3045,72 @@ server <- function(input,output,session){
     
     pmut_fn_horl <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
     pmut_fn=paste0(pmut_dir,"/",pmut_fn_horl,"_result/",iden_code,"_pmut.csv")
-    pmut_df=read.csv(pmut_fn)
+    if (file.exists(pmut_fn)){
+      pmut_df=read.csv(pmut_fn)
+      
+      colnames(pmut_df)[colnames(pmut_df)=="position"] <- "pdb_numbering"
+      pmut_num_df<- produce_mut_scan_df(num_df,pmut_df,"mean_ddG")
+      return (pmut_num_df)
+    }
+    else{
+      return (NULL)
+    }
     
-    colnames(pmut_df)[colnames(pmut_df)=="position"] <- "pdb_numbering"
-    pmut_num_df<- produce_mut_scan_df(num_df,pmut_df,"mean_ddG")
-    pmut_num_df
     
   })
   
   observe({
     pmut_num_df <- pmut_num_df()
-    rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+    if (is.null(pmut_num_df)){
+      output$rosetta_pmut_scan_plt <- NULL
+    }
+    else{
+      rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+      
+      output$rosetta_pmut_scan_plt <- renderPlotly({
+        rosetta_pmut_scan_plt0
+      })
+      
+      # Make the rosetta_pmut_scan_plt downloadable for users
+      output$download_rpmut <- downloadHandler(
+        filename=function(){
+          iden_code <-struc_selected()
+          paste0(iden_code,"_rosetta_pmut_info",".zip")
+        },
+        content=function(f_name){
+          iden_code <-struc_selected()
+          
+          temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+          dir.create(temp_directory)
+          rpmut <- rosetta_pmut_scan_plt0
+          
+          plot_df <- apply(pmut_num_df,2,as.character)
+          
+          plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
+          write.csv(plot_df,file.path(temp_directory,plot_df_name))
+          
+          #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+          #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+          #file.copy(matrix_f_name,matrix_f_name_new)
+          #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+          #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+          #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+          #}
+          
+          # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
+          #if (!require("processx")) install.packages("processx")
+          #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+          #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+          #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+          #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
+          
+          zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+        },
+        contentType="application/zip"
+      )
+    }
+
     
-    output$rosetta_pmut_scan_plt <- renderPlotly({
-      rosetta_pmut_scan_plt0
-    })
-    
-    # Make the rosetta_pmut_scan_plt downloadable for users
-    output$download_rpmut <- downloadHandler(
-      filename=function(){
-        iden_code <-struc_selected()
-        paste0(iden_code,"_rosetta_pmut_info",".zip")
-      },
-      content=function(f_name){
-        iden_code <-struc_selected()
-        
-        temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
-        dir.create(temp_directory)
-        rpmut <- rosetta_pmut_scan_plt0
-        
-        plot_df <- apply(pmut_num_df,2,as.character)
-        
-        plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
-        write.csv(plot_df,file.path(temp_directory,plot_df_name))
-        
-        #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
-        #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
-        #file.copy(matrix_f_name,matrix_f_name_new)
-        #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
-        #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
-        #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
-        #}
-        
-        # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
-        #if (!require("processx")) install.packages("processx")
-        #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-        #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-        #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-        #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
-        
-        zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
-      },
-      contentType="application/zip"
-    )
     
   })
   
@@ -3109,20 +3128,32 @@ server <- function(input,output,session){
     horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
     abty_csv_fn=paste0(abty_scaled_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
     
-    #abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
-    abty_csv=read.csv(abty_csv_fn) 
+    if (file.exists(abty_csv_fn)){
+      #abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+      abty_csv=read.csv(abty_csv_fn) 
+      
+      abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"scaled_pseudolog_likelihood")
+      #abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
+      abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
+      abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
+      return (abty_num_df)
+    }
+    else{
+      return (NULL)
+    }
     
-    abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"scaled_pseudolog_likelihood")
-    #abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
-    abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
-    abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
-    abty_num_df
+    
   })
   
   output$antiberty_plt <- renderPlotly({
     abty_num_df <- abty_num_df()
-    draw_mut_scan_plot(abty_num_df,"scaled_pseudolog_likelihood",T)
-    #draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
+    if (is.null(abty_num_df)){
+      return (NULL)
+    }
+    else{
+      draw_mut_scan_plot(abty_num_df,"scaled_pseudolog_likelihood",T)
+      #draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
+    }
   })
   
   
