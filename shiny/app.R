@@ -114,7 +114,7 @@ check_usr_inputted_seq <- function(o_seq){
     str_seq_vec=gsub(" ","",str_seq_vec[[1]])
     title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"test_seq")
     str_seq=ifelse(title=="test_seq",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
-    str_seq=str_seq
+    #str_seq=str_seq
     
     if (grepl("b",tolower(str_seq)) || grepl("j",tolower(str_seq))|| grepl("o",tolower(str_seq))|| grepl("u",tolower(str_seq))|| grepl("x",tolower(str_seq))|| grepl("z",tolower(str_seq))){
       showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
@@ -128,10 +128,11 @@ check_usr_inputted_seq <- function(o_seq){
 }
 
 # Generate blast table: return the best blast result (order: highest iden, alignment_length)
-generate_blast_result <- function(o_seq,db_dir,suffix=""){
-  str_seq <- check_usr_inputted_seq(o_seq)$seq
-  if (is.null(str_seq)){
-    return (NULL)
+generate_blast_result <- function(o_seq,db_dir,suffix="",check_seq=TRUE){
+  if (check_seq){
+    str_seq <- check_usr_inputted_seq(o_seq)$seq
+  } else{
+    str_seq <- o_seq
   }
   
   tryCatch(
@@ -158,18 +159,22 @@ generate_blast_result <- function(o_seq,db_dir,suffix=""){
       },
       error = function (e){
         # The file os not a valid fasta file
+        if (check_seq){
         showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        }
         return (NULL)
       },
       warning = function (w){
+        if (check_seq){
         showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        }
         return (NULL)
       }
   )
     
 } # return the dataframe of the complete result of the blast
 
-blast_paired_chains <- function (ab_title,hseq,lseq,region){
+blast_paired_chains <- function (ab_title,hseq,lseq,region,check_seq=TRUE){
   # Generate the blast result only (doesn't extract VCAb information) of the paired H&L chain
   
   # region is the region selected by the user, in order to choose the specific bl_db
@@ -179,8 +184,8 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region){
   H_bl <- ifelse(region=="v_region", HV_bl, VCAbH_bl)
   L_bl <- ifelse(region=="v_region", LV_bl, VCAbL_bl)
   
-  H_df <- generate_blast_result(hseq,H_bl,".H")
-  L_df <- generate_blast_result(lseq,L_bl,".L")
+  H_df <- generate_blast_result(hseq,H_bl,".H",check_seq=check_seq)
+  L_df <- generate_blast_result(lseq,L_bl,".L",check_seq=check_seq)
   # Merge the result of VH blast with VL blast:
   # if both not empty, merge; else, return the one that is not empty
   t_df <- if (is.null(H_df)) L_df else if (is.null(L_df)) H_df else merge(H_df,L_df,by="iden_code",suffixes=c(".H",".L"))
@@ -940,7 +945,11 @@ get_paired_repertoire_seq <- function(o_df,row_num,cell_id_col,seq_cols,chainTyp
   df=o_df[(o_df[[cell_id_col]]==cell_id)&(!(is.na(o_df[[chainType_col]]))),] 
   # extract the rows with the specified cell_id and non-empty value indicating the chainType(heavy or Light)
   #df=o_df[(o_df[[cell_id_col]]==cell_id),]
-  
+  if(is.na(o_df[row_num,chainType_col])){
+    # If the selected row does not have the chainType value, return NULL
+    return (NULL)
+  }
+
   if (nrow(df)!=2){
     return (NULL)
   }
@@ -2280,7 +2289,7 @@ server <- function(input,output,session){
             row_selected<-c(reper_selected_info$h_row_num,reper_selected_info$l_row_num)
             repertoire$row_selected <- row_selected[! row_selected %in% reper_row_num()]
             #print (repertoire$row_selected)
-            t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region") # the total blast table for VH&VL sequence
+            t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region",check_seq=FALSE) # the total blast table for VH&VL sequence
             bl_df <- t_df
             
             bl_ab_df <- generate_total_info(bl_df,ns)
@@ -2289,7 +2298,7 @@ server <- function(input,output,session){
             ab_info$ab_info_df <- new_bl_ab_df
           }
           else{
-            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The sequence you selected has no/multiple matched sequence paired with the one you selected,
+            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The sequence you selected has no/multiple matched sequence paired with the one you selected, or the entry you selected containing unvalid protein sequence.
                                   Please: <br>
                                   <b> 1. try to select another entry in the repertoire; or you haven't select any entry in the repertoire table <br> </b>
                                   the entry you selected is probably unpaired, or has multiple paired heavy or light chain.<br>
@@ -2305,7 +2314,7 @@ server <- function(input,output,session){
         else{
           # if the searching mode is unpaired
           reper_selected_info <- get_unpaired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$seq_col,repertoire$chainType_col)
-          if (reper_selected_info$seq==""){
+          if (reper_selected_info$seq %in% c("","NA","NULL","NaN","nan","na","null") || is.na(reper_selected_info$seq) || is.null(reper_selected_info$seq) ){
             showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The entry you selected has no valid sequence,
                                   Please: <br>
                                   <b> 1. try another entry in the repertoire; or you haven't select any entry in the repertoire table <br>
@@ -2317,7 +2326,7 @@ server <- function(input,output,session){
             blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
             #blast_db_dir <- HV_bl
             
-            blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir) # return the dataframe of the complete result of the blast
+            blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir,check_seq=FALSE) # return the dataframe of the complete result of the blast
             if (is.null(blast_df)==FALSE){
               #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
               VCAb_blast_df <- blast_df
