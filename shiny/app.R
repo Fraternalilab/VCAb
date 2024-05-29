@@ -68,6 +68,9 @@ cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
 #### NOTE: this part should be changed on server #########
 # Things needed to number the user-inputted sequence
 imgt_num_py="imgt_numbering_vc.py" # This line doesn't need to be changed.
+
+#use_python("/Users/dongjung/miniconda/bin/python")
+#hmmerpath="/Applications/moe2020/bin-mac64"
 use_python("/usr/bin/python3")
 hmmerpath="/usr/bin"
 source_python(imgt_num_py) # This line doesn't need to be changed.
@@ -141,7 +144,10 @@ generate_blast_result <- function(o_seq,db_dir,suffix="",check_seq=TRUE){
           db <- blast(db=db_dir,type="blastp")
           aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
           seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
-
+          if(nrow(seq_pred) == 0){
+            showModal(modalDialog(title="Sequence input error", "BLAST result is empty. Are you sure you input a valid sequence with appropriate length?"))
+	    return(NULL)
+	  }
           ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
           # Rank seq_pred
           seq_pred <- seq_pred[order(seq_pred$bitscore,decreasing=TRUE),]
@@ -892,11 +898,11 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
 vcab_number_usr_input_seq <- function(seq,region,hmmerpath){
   # region can only be "v_region" or "full_seq"
   if (is.null(seq)){
-    return (ggplot(NULL))
+    return (NULL)
   }
   num_df <- number_usr_input_seq (title, seq, region,hmmerpath)
   if (is.null(num_df)){
-    return (ggplot(NULL))
+    return (NULL)
   }
   num_df_for_plot <- generating_vc_num_info(num_df)
   get_numbering_plot(num_df_for_plot)
@@ -1913,11 +1919,13 @@ server <- function(input,output,session){
         seq1_seq <- seq1_info$seq
         seq1_title <- paste0(seq1_info$title,input$seq_type)
         o_num_plot_usr_seq_1 <- vcab_number_usr_input_seq(seq1_seq,input$sele_bl_db,hmmerpath)
-        
         usr_num_info_1$original <- o_num_plot_usr_seq_1
         usr_num_info_1$presented <- usr_num_info_1$original
         
         output$ui_num_plot_usr1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           tagList(
             p(HTML(paste0("<b>Numbering the user inputted sequence (IMGT scheme): </b><br/>",
                    "Hover on the residues to show the detailed numbering information <br/>",
@@ -1934,9 +1942,11 @@ server <- function(input,output,session){
           usr_num_info_1$presented
         })
         output$ui_num_info_seq1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           hover <- input$num_hover_seq1
           num_df <- usr_num_info_1$presented$data
-          
           plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
           plotData <- plotData[complete.cases(plotData),]
           point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
@@ -1959,7 +1969,7 @@ server <- function(input,output,session){
         ##### ------ #####
         
         ##### ADD USR_SELECTED C SEQUENCE TO THE V REGION, if the usr select "V region" for the "select the region of your interest" #####
-        if (input$sele_bl_db=="v_region"){
+        if (input$sele_bl_db=="v_region" && is.null(o_num_plot_usr_seq_1)==FALSE){
           output$ui_append_c_seq <- renderUI({
             tagList(
               p(HTML(paste0(
@@ -2024,6 +2034,9 @@ server <- function(input,output,session){
         ##### Make the numbered usr_seq available to download #######
         usr_seq2_info <- reactiveValues(seq2_info=NULL) # stores seq_info like title and sequences
         output$ui_download_num_usr_seq <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           tagList(
             br(),
             downloadButton("download_num_usr_seq",label="Download numbered sequence")#,
@@ -2032,7 +2045,6 @@ server <- function(input,output,session){
             #)))
           )
         })
-        
         output$download_num_usr_seq <- downloadHandler(
           filename=function(){
             title <- ifelse(is.null(usr_seq2_info$seq2_info$seq),paste0(seq1_info$title,"_",input$seq_type),
@@ -2044,7 +2056,7 @@ server <- function(input,output,session){
             num_df <- usr_num_info_1$presented$data
             
             temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
-            dir.create(temp_directory)
+	    dir.create(temp_directory)
             
             num_info=extract_seq_from_num_df(num_df,seq_name)
             pure_num_df=num_info$num_df
@@ -2053,7 +2065,6 @@ server <- function(input,output,session){
             
             write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
             write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
-            
             if (is.null(usr_seq2_info$seq2_info$seq)==FALSE){
               seq2_info <- usr_num_info_2$presented$seq2_info
               seq2_name <- paste0(seq2_info$title,"_",input$seq_type_2)
@@ -2119,6 +2130,9 @@ server <- function(input,output,session){
           usr_num_info_2$presented <- usr_num_info_2$original
           
           output$ui_num_plot_usr2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
             tagList(
               p(HTML(paste0(
                 "<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain:","Light chain:"), "</b><br/>"
@@ -2133,6 +2147,9 @@ server <- function(input,output,session){
             usr_num_info_2$presented
           })
           output$ui_num_info_seq2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
             hover <- input$num_hover_seq2
             num_df <- usr_num_info_2$presented$data
             
@@ -2168,6 +2185,7 @@ server <- function(input,output,session){
           blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
           
           this_seq <- input$seq_txt
+	  
           # BLAST:
           blast_df <- generate_blast_result(this_seq,blast_db_dir) # return the dataframe of the complete result of the blast
 
@@ -2186,10 +2204,8 @@ server <- function(input,output,session){
             
             # Record the order of the blast result
             VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
-            
             bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
-            
-            new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+	    new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
             rownames(new_bl_ab_df) <- NULL
             new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
             
