@@ -6,47 +6,86 @@ library (NGLVieweR)
 library (tibble)
 library (shinyhelper)
 library (ggplot2)
+library(seqinr)
+library(shinyBS)
+library(shinyjs)
+library(reticulate)
+library (polished)
+library (plotly)
 
 ####################### DIRECTORIES FOR ALL THE USED FILES #######################
-vcab_dir="../vcab_db/final_vcab.csv"
-pops_parent_dir <- "../pops/result/"
+#vcab_dir="../vcab_db/result/vcab_shiny.csv"
+vcab_dir="../vcab_db/result/final_vcab.csv"
+pops_parent_dir <- "../pops/total_result/"
 f_pdb_dir <- "../pdb_struc/full_pdb/"
 pdb_parent_dir <- "../pdb_struc/chain_pdb/"
 
 
+pmut_dir <- "../mut_scan/rosetta/" 
+abty_scaled_dir="../mut_scan/antiberty/"
+almissense_dir <- "../mut_scan/alphaMissense/"
+
+
 # Directories of blast db:
 # ref db:
-igh_bl <- "../seq_db/ref_db/human_IGH_db/human_IGH.fasta"
+igh_bl <- "../seq_db/ref_db/ch_db/all_species_unique_CH_alleles.fasta"
 # ref_IGH_seq from uniprot
-light_bl <- "../seq_db/ref_db/human_light_chain_db/human_light_constant.fasta"
+light_bl <- "../seq_db/ref_db/cl_db/all_species_unique_CL_alleles.fasta"
 # ref_L_seq from uniprot
-all_ref_bl <- "../seq_db/ref_db/all_ref_db/all_ref.fasta"
+all_ref_bl <- "../seq_db/ref_db/ch+cl_db/total_species_c_ref.fasta"
 # ref_db containing all the reference sequences
 
-# Blast db:
-VCAb_fseq_bl <- "../seq_db/vcab_db/all_full_seq.fasta"
+# VCAb db:
+VCAb_fseq_bl <- "../seq_db/vcab_db/full_seq_db/all_full_seq.fasta"
 # all the full sequence from both H and L chains
-VCAb_vseq_bl <- "../seq_db/vcab_db/all_v_seq.fasta"
+VCAb_vseq_bl <- "../seq_db/vcab_db/v_seq_db/all_v_seq.fasta"
 # all the V region sequence from both H and L chains
 
-VCAbH_bl <- "../seq_db/vcab_db/H_seq.fasta"
+VCAbH_bl <- "../seq_db/vcab_db/h_seq_db/H_seq.fasta"
 # all H_full_seq in VCAb
-VCAbL_bl <- "../seq_db/vcab_db/L_seq.fasta" 
+VCAbL_bl <- "../seq_db/vcab_db/l_seq_db/L_seq.fasta" 
 # all L_full_seq in VCAb
-HV_bl <- "../seq_db/vcab_db/HV_seq.fasta"
+HV_bl <- "../seq_db/vcab_db/hv_seq_db/HV_seq.fasta"
 # all HV seq in VCAb
-LV_bl <- "../seq_db/vcab_db/LV_seq.fasta"
+LV_bl <- "../seq_db/vcab_db/lv_seq_db/LV_seq.fasta"
 # all LV seq in VCAb
 # Example: generate files required for the establishment of blast db:
 # makeblastdb("~/Desktop/antibody/human_IGH_db/human_IGH.fasta",dbtype="prot")
+# on command line:
+# makeblastdb -in test.fasta -dbtype prot
+
+# CH1-CL Matrix dir:
+mtrix_dir="../ch1_cl_interface_matrix/complete_matrix/"
+res_info_dir="../res_info/"
+
+
+# Files required to display the numbering function
+vh_num_dir="../vcab_db/result/num_result/vnumbering_H_shiny.csv"
+vl_num_dir="../vcab_db/result/num_result/vnumbering_KL_shiny.csv"
+ch_num_dir="../vcab_db/result/num_result/cnumbering_H_C1.csv"
+cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
+
+#### NOTE: this part should be changed on server #########
+# Things needed to number the user-inputted sequence
+imgt_num_py="imgt_numbering_vc.py" # This line doesn't need to be changed.
+
+#use_python("/Users/dongjung/miniconda/bin/python")
+#hmmerpath="/Applications/moe2020/bin-mac64"
+use_python("/usr/bin/python3")
+hmmerpath="/usr/bin"
+source_python(imgt_num_py) # This line doesn't need to be changed.
+######--------------#########
+
+
 
 # Files required to plot the seq_cov plot
-dom_info_dir="../seq_db/ref_db/all_alleles/H_chains/h_alleles_domain_info.csv"
-total_dom_info=read.csv(dom_info_dir)
-total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
+dom_info_dir="../vcab_db/h_domains_info.csv" 
+total_dom_info=read.csv(file=dom_info_dir) 
+# NOTE: unlike the previous version, total_dom_info is a list now. CHANGES SHOULD BE MADED RELATED TO THIS VARIABLE.
+#total_dom_info=total_dom_info[,!(names(total_dom_info) %in% c("X"))]
 
-h_author_seq_bl_dir="../vcab_db/blast_result/best_h_seq_bl_result.csv"
-h_coor_seq_bl_dir="../vcab_db/blast_result/best_h_coordinate_seq_bl_result.csv"
+h_author_seq_bl_dir="../vcab_db/result/blast_result/best_h_seq_bl_result.csv" 
+h_coor_seq_bl_dir="../vcab_db/result/blast_result/best_h_coordinate_seq_bl_result.csv"
 t_h_author_bl=read.csv(h_author_seq_bl_dir)
 t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
@@ -57,58 +96,91 @@ t_h_coor_bl=read.csv(h_coor_seq_bl_dir)
 
 # Read the vcab database (the csv file)
 o_vcab=read.csv(file=vcab_dir) # original vcab table
-
-# Read the unusual case csv
-all_unusual_cases = read.csv(file = '../vcab_db/unusual_cases/all_unusual_cases.csv')
-all_unusual_cases = all_unusual_cases[, 3:ncol(all_unusual_cases)]
-
 # Round some values to two digit in order to make the table looks better:
 vcab=o_vcab
-colnames(vcab)[which(names(vcab) == "elbow_angle")] <- "elbow_angle0"
-vcab$elbow_angle <- unlist(lapply(vcab$elbow_angle0,function(x){round(x,2)}))
-vcab$CH1_CL.interface_angle <- unlist(lapply(vcab$CH1.CL_interface_angle,function(x){round(x,2)}))
-vcab=vcab[,!(names(vcab) %in% c("X","CH1.CL_interface_angle","elbow_angle0"))] 
-
 #Note: the positions of seqs:33:36
-##vcab=vcab[!(vcab$pdb %in% c("2rcj","7bm5")),]
 update_date_fn="../vcab_db/VCAb_db_update_date.txt"
 update_date=readChar(update_date_fn, file.info(update_date_fn)$size)
 
-release_fn="../release"
+release_fn="../vcab_db/release.txt"
 release=readChar(release_fn, file.info(release_fn)$size)
 
 ####################### Functions #######################
-# Generate blast table: return the best blast result (order: highest iden, alignment_length)
-generate_blast_result <- function(o_seq,db_dir,suffix=""){
+# Check for usr_input sequence: extract the pure sequence and the fasta title
+check_usr_inputted_seq <- function(o_seq){
   str_seq <- as.character(o_seq)
   if (str_seq==""){
-    return (NULL)
+    return (list("seq"=NULL,"title"=NULL))
   }
-  else {
-    withProgress(message="BLASTing...",value=0,{
-      db <- blast(db=db_dir,type="blastp")
-      aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
-      seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
-      
-      ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
-      # Rank seq_pred
-      seq_pred <- seq_pred[order(seq_pred$Bits,decreasing=TRUE),]
-      blast_df <- seq_pred[,2:12]
-      rownames(blast_df) <- NULL
-      
-      # generate the column of "iden_code"
-      split_id <- function(i,sep){
-        strsplit(i,sep)[[1]][1]
-      }
-      colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
-      blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
-      return (blast_df)
-    })
+  else{
+    str_seq_vec=strsplit(str_seq,"\n")
+    str_seq_vec=gsub(" ","",str_seq_vec[[1]])
+    title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"test_seq")
+    str_seq=ifelse(title=="test_seq",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
+    #str_seq=str_seq
+
+    if (grepl("b",tolower(str_seq)) | grepl("j",tolower(str_seq))| grepl("o",tolower(str_seq))| grepl("u",tolower(str_seq))| grepl("x",tolower(str_seq))| grepl("z",tolower(str_seq))){
+      showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+      return (list("seq"=NULL,"title"=NULL))
+    }
+    else{
+      return (list("seq"=str_seq,"title"=title))
+    }
     
   }
+}
+
+# Generate blast table: return the best blast result (order: highest iden, alignment_length)
+generate_blast_result <- function(o_seq,db_dir,suffix="",check_seq=TRUE){
+  if (check_seq){
+    str_seq <- check_usr_inputted_seq(o_seq)$seq
+  } else{
+    str_seq <- o_seq
+  }
+
+  tryCatch(
+      expr={
+        withProgress(message="BLASTing...",value=0,{
+          db <- blast(db=db_dir,type="blastp")
+          aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
+          seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
+          if(nrow(seq_pred) == 0){
+            showModal(modalDialog(title="Sequence input error", "BLAST result is empty. Are you sure you input a valid sequence with appropriate length?"))
+	    return(NULL)
+	  }
+          ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
+          # Rank seq_pred
+          seq_pred <- seq_pred[order(seq_pred$bitscore,decreasing=TRUE),]
+          blast_df <- seq_pred[,2:12]
+          rownames(blast_df) <- NULL
+
+          # generate the column of "iden_code"
+          split_id <- function(i,sep){
+            strsplit(i,sep)[[1]][1]
+          }
+          colnames(blast_df) <- paste(colnames(blast_df),suffix, sep="")
+          blast_df$iden_code <- unlist(lapply(blast_df$sseqid, split_id, "-"))
+          return (blast_df)
+        })
+      },
+      error = function (e){
+        # The file os not a valid fasta file
+        if (check_seq){
+        showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        }
+        return (NULL)
+      },
+      warning = function (w){
+        if (check_seq){
+        showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
+        }
+        return (NULL)
+      }
+  )
+    
 } # return the dataframe of the complete result of the blast
 
-blast_paired_chains <- function (ab_title,hseq,lseq,region){
+blast_paired_chains <- function (ab_title,hseq,lseq,region,check_seq=TRUE){
   # Generate the blast result only (doesn't extract VCAb information) of the paired H&L chain
   
   # region is the region selected by the user, in order to choose the specific bl_db
@@ -118,17 +190,17 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region){
   H_bl <- ifelse(region=="v_region", HV_bl, VCAbH_bl)
   L_bl <- ifelse(region=="v_region", LV_bl, VCAbL_bl)
   
-  H_df <- generate_blast_result(hseq,H_bl,".H")
-  L_df <- generate_blast_result(lseq,L_bl,".L")
+  H_df <- generate_blast_result(hseq,H_bl,".H",check_seq=check_seq)
+  L_df <- generate_blast_result(lseq,L_bl,".L",check_seq=check_seq)
   # Merge the result of VH blast with VL blast:
   # if both not empty, merge; else, return the one that is not empty
   t_df <- if (is.null(H_df)) L_df else if (is.null(L_df)) H_df else merge(H_df,L_df,by="iden_code",suffixes=c(".H",".L"))
   
   # Add the avg_ident to the merged table
-  t_df <- within(t_df,avg_ident <- if (is.null(H_df)) Perc.Ident.L else if (is.null(L_df)) Perc.Ident.H else (Perc.Ident.H+Perc.Ident.L)/2)
+  t_df <- within(t_df,avg_ident <- if (is.null(H_df)) pident.L else if (is.null(L_df)) pident.H else (pident.H + pident.L) / 2)
   t_df <- t_df[with(t_df,order(avg_ident,decreasing=TRUE)),] # sort the table based on avg_ident
   
-  rownames(t_df) <- NULL # reset the row index of df
+  rownames(t_df) <- NULL # reset the row index of df 
   
   if (ab_title==""){
     t_df <- t_df[,!(names(t_df) %in% c("avg_ident"))] # The column "avg_ident" would not be displayed
@@ -139,10 +211,9 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region){
     t_df$QueryID <- ab_title
     # Rearrange the columns of t_df and drop the column avg_ident
     # Note: using merge might break the row order defined by avg_ident
-    t_df <- t_df[,c("QueryID","iden_code",
-                    "SubjectID.H","Perc.Ident.H","Alignment.Length.H","Mismatches.H","Gap.Openings.H","Q.start.H","Q.end.H","S.start.H","S.end.H","E.H","Bits.H",
-                    "SubjectID.L","Perc.Ident.L","Alignment.Length.L","Mismatches.L","Gap.Openings.L","Q.start.L","Q.end.L","S.start.L","S.end.L","E.L","Bits.L")]
-    
+    t_df <- t_df[,c("qseqid","iden_code",
+                    "sseqid.H","pident.H","length.H","mismatch.H","gapopen.H","qstart.H","qend.H","sstart.H","send.H","evalue.H","bitscore.H",
+                    "sseqid.L","pident.L","length.L","mismatch.L","gapopen.L","qstart.L","qend.L","sstart.L","send.L","evalue.L","bitscore.L")] 
     return (t_df)
   }
   
@@ -198,7 +269,7 @@ uploaded_file_blast_unpaired <- function(f_path,region){
     best_match$QueryID <- ab_title
     result <- rbind(result,best_match)
   }
-  result <- result[,c("QueryID","SubjectID","iden_code","Perc.Ident","Alignment.Length","Mismatches","Gap.Openings","Q.start","Q.end","S.start","S.end","E","Bits")]
+  result <- result[,c("qseqid","sseqid","iden_code","pident","length","mismatch","gapopen","qstart","qend","sstart","send","evalue","bitscore")]
   return (result)
 }
 
@@ -266,25 +337,26 @@ extract_entry <- function(title,df){
 }
 
 # Filter the table by features (attributes)
-filter_the_rows <- function (iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_antigen,df=vcab){
+filter_the_rows <- function (species,iso_txt,Ltype_txt,struc_cov,exp_method,res_cut,if_antigen,df=vcab){
   # select the rows to be displayed
   # return a set of TRUE/FALSE value
   
   # all the inputs of this function are the input: e.g. iso_txt should be in this format: input$iso_txt
   chain_type_filter <- function(col_name,user_input){
-    if (user_input=="All") TRUE else unlist(lapply(df[[col_name]],function(x){strsplit(x,"\\(")[[1]][1]==user_input}))
+    #if (is.null(user_input)) return TRUE
+    if ((is.null(user_input)) || (user_input=="All")) TRUE else unlist(lapply(df[[col_name]],function(x){strsplit(x,"\\(")[[1]][1]==user_input}))
   }
   select_filter <- function(check_col_name,select_input_value){
     # check_col_name: the name of the column in the table to be checked / the column which serves as the filter standard
     # o_select_input_value: the value inputted by the user, e.g. input$iso_txt
-    if(select_input_value=="All") TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
+    if((is.null(select_input_value)) || (select_input_value=="All")) TRUE else df[[check_col_name]] %in% c(select_input_value) # To select rows, to include the "all" option
   }
   
   antigen_filter <- function(){
-    if (if_antigen=="Any") TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
+    if ((is.null(if_antigen))||(if_antigen=="Any")) TRUE else if (if_antigen=="No") df[["antigen_chain"]]=="" else df[["antigen_chain"]]!=""
   }
-  first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
-  final_filter <- if (is.na(res_cut)) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
+  first_filter <- chain_type_filter("Htype",iso_txt)&chain_type_filter("Ltype",Ltype_txt)&select_filter("Species",species)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method)&antigen_filter()
+  final_filter <- if ((is.null(res_cut)) || (is.na(res_cut))) first_filter else first_filter&(df$resolution <= res_cut) # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
   
   return (final_filter)
 }
@@ -297,6 +369,7 @@ shinyInput <- function(FUN, len, id, ns, ...) {
   }
   inputs
 }
+
 
 # Add "show" button in every entry of the table
 addShow <- function(df,ns){
@@ -332,7 +405,7 @@ generate_pops_info <- function(pdb_c){
   # type_pdb_c: the name of the antibody in this format: "igg1_k_7c2l_HL"
   # pdb_c: the name of the antibody in this format: "7c2l_HL"
   
-  pops_dir <- paste(pops_parent_dir,pdb_c,"_C_deltaSASA_rpopsResidue.txt",sep='')
+  pops_dir <- paste(pops_parent_dir,pdb_c,"_deltaSASA_rpopsResidue.txt",sep='')
   pops_file <- read.csv(file=pops_dir, sep=' ')
   new_pops <- pops_file%>% dplyr::filter(D_SASA.A.2>15) #filtered pops file
   new_pops <- new_pops[,c("Chain","ResidNe","ResidNr","D_SASA.A.2")] # only show these four columns
@@ -357,6 +430,9 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   if(grepl(",", allele_info)) allele=strsplit(allele_info,",")[[1]][1]
   else allele=strsplit(allele_info,":")[[1]][1]
   
+  #species=strsplit(sp_allele,"\\|")[[1]][1]
+  #allele=strsplit(sp_allele,"\\|")[[1]][2]
+  
   # (1) annotation of domain starts/end points of the reference allele
   dom_positions = ref_dom[ref_dom$q==allele,]
   rownames(dom_positions) <- NULL
@@ -365,29 +441,37 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   ref_end=tail(dom_positions,n=1)$b
   
   # (2) annotation of the coverage of reference / author sequence / coordinate sequence
-  author_hit_info=head(t_author_bl[(t_author_bl$iden_code==iden_code)&(t_author_bl$matched_alleles==allele),],n=1)
-  coor_hit_info=head(t_coor_bl[(t_coor_bl$iden_code==iden_code)&(t_coor_bl$matched_alleles==allele),],n=1)
+  author_hit_info=head(t_author_bl[t_author_bl$iden_code==iden_code,],n=1)
+  coor_hit_info=head(t_coor_bl[t_coor_bl$iden_code==iden_code,],n=1)
   
   author_start=author_hit_info$start_ref
   author_end=author_hit_info$end_ref
   coor_start=coor_hit_info$start_ref
   coor_end=coor_hit_info$end_ref
   
+  #coverage_pos <- data.frame(
+  #  a = c(ref_start, author_start, coor_start), b = c(ref_end, author_end, coor_end), # start and end
+  #  q = c(allele, 'author', 'coords') # indicate sequence type
+  #)
   coverage_pos <- data.frame(
-    a = c(ref_start, author_start, coor_start), b = c(ref_end, author_end, coor_end), # start and end
-    q = c(allele, 'author', 'coords') # indicate sequence type
+    a = c(author_start, coor_start), b = c(author_end, coor_end), # start and end
+    q = c('author', 'coords') # indicate sequence type
   )
   
   # order the sequence type annotation for the plot
   dom_positions$q <- factor(dom_positions$q, 
-                            levels = c(allele, 'author', 'coords'),
-                            labels = c(paste0('reference\n',allele), 
-                                       'author-submitted\nsequence (HC)',
-                                       'atomic\ncoordinate (HC)'))
+                            levels = c('author', 'coords',allele),
+                            labels = c('author-submitted\nsequence (HC)',
+                                       'atomic\ncoordinate (HC)',
+                                       paste0('reference\n',allele)))
+  #coverage_pos$q <- factor(coverage_pos$q, 
+  #                         levels = c(allele, 'author', 'coords'),
+  #                         labels = c(paste0('reference\n',allele), 
+  #                                    'author-submitted\nsequence (HC)',
+  #                                    'atomic\ncoordinate (HC)'))
   coverage_pos$q <- factor(coverage_pos$q, 
-                           levels = c(allele, 'author', 'coords'),
-                           labels = c(paste0('reference\n',allele), 
-                                      'author-submitted\nsequence (HC)',
+                           levels = c('author', 'coords'),
+                           labels = c('author-submitted\nsequence (HC)',
                                       'atomic\ncoordinate (HC)'))
   
   #return (list("dom_pos"=dom_positions,"cov_pos"=coverage_pos))
@@ -402,7 +486,7 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
   {
     # prepare the ggplot canvas
     ggplot(tb, aes(xmin = a, xmax = b, y = q)) + 
-      scale_y_discrete(drop = FALSE, name = "") +
+      scale_y_discrete(drop = FALSE, name = "") + 
       scale_x_continuous(labels = seq(1, ref_end, by = 100), name = "AA position",
                          breaks = seq(1, ref_end, by = 100)) + theme_bw()
   }
@@ -417,7 +501,7 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
               aes_string(xmin = start_column_name, xmax = end_column_name),
               ymin = as.numeric(tb[, y_column_name]) - 0.1,
               ymax = as.numeric(tb[, y_column_name]) + 0.1,
-              fill = "grey80")
+              fill = "grey60")
   }
   
   draw_dom_position <- function(tb, y_column_name)
@@ -425,42 +509,641 @@ get_coverage_pos_plot <- function(iden_code,horltype,ref_dom,t_author_bl,t_coor_
     # draw the domain boundaries with dark coloured rectangles
     # y_column_name refers to ref/author/coords (all should be 'ref'! - 
     # just so that ggplot2 knows on which horizontal line to put the rect)
-    geom_rect(ymin = as.numeric(tb[, y_column_name]) - 0.1,
-              ymax = as.numeric(tb[, y_column_name]) + 0.1) 
+    geom_rect(#ymin = as.numeric(tb[, y_column_name]) - 0.1,
+      #ymax = as.numeric(tb[, y_column_name]) + 0.1,
+      data=tb,
+      ymin = 0,
+      ymax = 100,
+      aes_string(fill = "dom",alpha=0.5)
+    ) 
   }
   
   # actual plotting
   g <- prepare_plot(dom_positions)
+  g <- g + draw_dom_position(dom_positions, "q")
   g <- g + draw_coverage(coverage_pos, start_column_name = "a",
                          end_column_name = "b", y_column_name = "q")
-  g <- g + draw_dom_position(dom_positions, "q")
-  g <- g + geom_text(aes(label = dom, x = label_pos), colour = "white")
-  g <- g + theme(axis.text = element_text(size = 12))
+  
+  g <- g + geom_text(data=dom_positions,aes(label = dom, x = label_pos), colour = "white", fontface = "bold")
+  g <- g + theme(axis.text = element_text(size = 12),
+                 legend.position="none",
+                 panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background=element_blank())
   # 'g' is the ggplot2 object to be rendered/printed:
   return (g)
   
 }
 
+
+
 get_similar_interface <- function(iden_code,dm_df){
-  sub_df_row=dm_df[dm_df$X==iden_code,!(names(dm_df) %in% c("X"))]
-  rownames(sub_df_row) <- NULL
-  t_sub_df_row=t(sub_df_row) # first extract the rows, then transpose the df into column
-  rownames(t_sub_df_row) <- lapply(rownames(t_sub_df_row),function(x){substring(x,2)})
-  colnames(t_sub_df_row) <- c("row_extraction")
+  col_name <- iden_code
+  title_col="...1"
+  similar_abs_df <- dm_df[order(dm_df[col_name]),c(title_col,col_name),drop=FALSE][1:11,,drop=FALSE]
   
-  sub_df_col=data.frame(col_extraction=dm_df[,paste0("X",iden_code)])
-  rownames(sub_df_col) <- dm_df$X
+  names(similar_abs_df) <- c("iden_code","interface.difference.index")
+  similar_abs_df <- as.data.frame(similar_abs_df)
+  similar_abs_df$interface.difference.index <- unlist(lapply(similar_abs_df$interface.difference.index,function(x){round(x,3)}))
+  return (similar_abs_df)
   
-  sub_df <- cbind(t_sub_df_row,sub_df_col) # combine the distance listed in the row (iden_code) and col(Xiden_code)
-  sub_df$o_interface_difference_index <- apply(sub_df,1,max) # The max value of the row_extraction and col_extraction is the interface_diff_index
-  sub_df$interface_difference_index <- unlist(lapply(sub_df$o_interface_difference_index,function(x){round(x,2)}))
-  similar_interface_df <- head(sub_df[order(sub_df$interface_difference_index),],11)
-  similar_interface_df$iden_code <- rownames(similar_interface_df)
+}
+
+## Functions to display antibody numbering
+
+extracting_num_df <- function(iden_code,res_info_dir){
+  # id_code: in the format of pdbid_SingleChainId (not the ID of HL pair)
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (list("hnum"=NULL,"lnum"=NULL))
+  }
   
-  similar_interface_df<- similar_interface_df[,c("iden_code","interface_difference_index")]
-  rownames(similar_interface_df) <- NULL
-  names(similar_interface_df)[2]<-"interface.difference.index"
-  return (similar_interface_df)
+  hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  
+  h_number <- as.numeric(regmatches(hnum$imgt_numbering, gregexpr("[[:digit:]]+", hnum$imgt_numbering)))
+  h_insertion_code <- regmatches(hnum$imgt_numbering, gregexpr("[[:alpha:]]+", hnum$imgt_numbering))
+  hnum[,"number"]<- h_number
+  hnum[,"insertion"] <- unlist(lapply(h_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
+  
+  l_number <- as.numeric(regmatches(lnum$imgt_numbering, gregexpr("[[:digit:]]+", lnum$imgt_numbering)))
+  l_insertion_code <- regmatches(lnum$imgt_numbering, gregexpr("[[:alpha:]]+", lnum$imgt_numbering))
+  lnum[,"number"]<- l_number
+  lnum[,"insertion"] <- unlist(lapply(l_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
+  
+  return (list("hnum"=hnum,"lnum"=lnum))
+} 
+
+
+generating_vc_num_info <- function(vcnum){
+  # Generating the dataframe containing the information of the name of fragments
+  # vcnum is the result generated from extracting_num_df, which has the information of both V and C numbering information
+  if (is.null(vcnum)){
+    return (NULL)
+  }
+  vcnum[,"insertion"] <- unlist(lapply(vcnum$insertion,function(x){ifelse(x==" ",NA_character_,x)}))
+  vcnum[,"region"]<-NA
+  
+  
+  # Assign regions column (FR1,CDR,A-strand,etc)
+  for (i in 1:nrow(vcnum)){
+    vc <- vcnum[i,"VorC"]
+    num <- as.numeric(vcnum[i,"number"])
+    ins <- vcnum[i,"insertion"]
+    if (vc=="V"){
+      if (num<=26){
+        vcnum[i,"region"] <- "FR1"
+      }
+      else if (num>=27 && num<=38){
+        vcnum[i,"region"] <- "CDR1"
+      }
+      else if (num>=39 && num<=55){
+        vcnum[i,"region"] <- "FR2"
+      }
+      else if (num>=56 && num<=65){
+        vcnum[i,"region"] <- "CDR2"
+      }
+      else if (num>=66 && num<=104){
+        vcnum[i,"region"] <- "FR3"
+      }
+      else if (num>=105 && num<=117){
+        vcnum[i,"region"] <- "CDR3"
+      }
+      else{
+        vcnum[i,"region"] <- "FR4"
+      }
+    }
+    else{
+      if (num==1){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand A"
+        }
+        else{
+          vcnum[i,"region"] <- ""
+        }
+        
+      }
+      else if (num<15 && num >1){
+        vcnum[i,"region"] <- "strand A"
+      }
+      else if(num==15){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand A"
+        }
+        else{
+          vcnum[i,"region"] <- "AB turn"
+        }
+      }
+      else if(num>=16 && num<=26){
+        vcnum[i,"region"] <- "strand B"
+      }
+      else if(num>=27 && num<=38){
+        vcnum[i,"region"] <- "BC turn"
+      }
+      else if(num>=39 && num<45){
+        vcnum[i,"region"] <- "strand C"
+      }
+      else if(num==45){
+        if(is.na(ins)){
+          vcnum[i,"region"] <- "strand C"
+        }
+        else{
+          vcnum[i,"region"] <- "CD turn"
+        }
+      }
+      else if(num>=77 && num<84){
+        vcnum[i,"region"] <- "strand D"
+      }
+      else if(num==84){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand D"
+        }
+        else{
+          vcnum[i,"region"] <- "DE turn"
+        }
+      }
+      else if(num==85){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand E"
+        }
+        else{
+          vcnum[i,"region"] <- "DE turn"
+        }
+      }
+      else if(num>85&&num<96){
+        vcnum[i,"region"] <- "strand E"
+      }
+      else if(num==96){
+        if (is.na(ins)){
+          vcnum[i,"region"] <- "strand E"
+        }
+        else{
+          vcnum[i,"region"] <- "EF turn"
+        }
+      }
+      else if (num>=97&&num<=104){
+        vcnum[i,"region"] <- "strand F"
+      }
+      else if (num>=105&&num<=117){
+        vcnum[i,"region"] <- "FG loop"
+      }
+      else{
+        vcnum[i,"region"] <- "strand G"
+      }
+    }
+  }
+  
+  
+  
+  ## Assign x, y positions
+  assign_x_and_y <- function(regions,y_value){
+    s_num <- list()
+    for (r in regions){
+      ss_num <- vcnum[vcnum["region"]==r,]
+      if (nrow(ss_num)>=1){
+        rownames(ss_num) <- NULL
+        vc <- ss_num[1,"VorC"]
+        #ss_num[nrow(ss_num) + 1,] = c(vc,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,NA_character_,r)
+        if(colnames(ss_num)[1]=="VorC"){
+          ss_num[nrow(ss_num) + 1,] = c(vc,rep(NA_character_,ncol(ss_num)-2),r)
+        }
+        else{
+          ss_num[nrow(ss_num) + 1,] = c(rep(NA_character_,ncol(ss_num)-2),vc,r)
+        }
+      }
+      else if (nrow(ss_num)==0){
+        ss_num[1,]=c(rep(NA_character_,ncol(ss_num)-1),"")
+      }
+      s_num <- append(s_num,list(ss_num))
+    }
+    #s_num <- vcnum[(unlist(lapply(vcnum["region"],function(x){x %in% regions}))),]
+    s_num <- do.call("rbind",s_num)
+    rownames(s_num) <- NULL
+    s_num["x"] <- as.numeric(rownames(s_num))
+    s_num["y"] <- rep(y_value,nrow(s_num))
+    return (s_num)
+  }
+  vnum1 <- assign_x_and_y(c("FR1","CDR1"),9)
+  vnum2 <- assign_x_and_y(c("FR2","CDR2"),8)
+  vnum3 <- assign_x_and_y(c("FR3"),7)
+  vnum4 <- assign_x_and_y(c("CDR3","FR4"),6)
+  cnum1 <- assign_x_and_y(c("","strand A","AB turn","strand B","BC turn"),4)
+  cnum2 <- assign_x_and_y(c("strand C","CD turn","strand D","DE turn"),3)
+  cnum3 <- assign_x_and_y(c("strand E","EF turn","strand F","FG loop"),2)
+  cnum4 <- assign_x_and_y(c("strand G"),1)
+  result <- do.call("rbind",list(vnum1,vnum2,vnum3,vnum4,cnum1,cnum2,cnum3,cnum4))
+  return (result)
+  
+  
+}
+
+
+get_numbering_plot <- function(num_df){
+  
+  region_pos <- data.frame("region"=unique(num_df[,"region"]))
+  region_pos["start"] <- NA
+  region_pos["end"] <- NA
+  region_pos["y"] <- NA
+  region_pos["VorC"] <- NA
+  
+  for (i in 1:nrow(region_pos)){
+    region_name=region_pos[i,"region"]
+    snum_df=num_df[num_df["region"]==region_name,]
+    rownames(snum_df) <- NULL
+    region_pos[i,"start"] <- min(snum_df[,"x"])
+    region_pos[i,"end"] <- max(snum_df[,"x"])
+    region_pos[i,"y"] <- snum_df[1,"y"]
+    region_pos[i,"VorC"] <- snum_df[1,"VorC"]
+  }
+  #region_pos$y <- factor(region_pos$y,
+  #                       levels=c(1,2,3,4,5,6,7,8,9))
+  
+  #return (region_pos)
+  g <- ggplot(num_df, aes_string(x="x", y = "y")) + 
+    scale_y_discrete(drop = FALSE, name = "C                                      V") +
+    scale_x_discrete(drop = FALSE, name = "") +
+    theme_bw()+
+    theme(
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank(),
+      axis.title.y = element_text(color = "black", size = 18, angle = 90, hjust = .5, vjust = .5, face = "bold"),
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+    ) +
+    # Add region labels
+    geom_text(data=region_pos,aes(label=region),x=(region_pos[,"start"]+region_pos[,"end"])/2,vjust=-1.5,fontface='bold',size=5)+
+    geom_tile(data=num_df[!is.na(num_df$res_code), ],aes_string(x="x",y="y",fill="VorC"), alpha=0.5,height = 0.5)+ # add background
+    scale_fill_manual(values=c("V"=alpha("deepskyblue3", .5),"C"=alpha("darkorange", .5)),guide = "none")+
+    geom_text(data=num_df,aes_string(x="x",y="y",label="res_code"),hjust=0,nudge_x=-0.5) # add sequence residues
+  
+  return (g)
+  
+}
+extract_seq_from_num_df <- function(df,Id_code){
+  df <- df[,c("VorC","region","res_code","imgt_numbering")]
+  df <- df[complete.cases(df),]
+  rownames(df)<-NULL
+  
+  vnum <- df[df["VorC"]=="V",]
+  cnum <- df[df["VorC"]=="C",]
+  
+  vseq <- paste0(vnum$res_code,collapse="")
+  cseq <- paste0(cnum$res_code,collapse="")
+  
+  v_title <- paste0(Id_code,"_v_seq")
+  c_title <- paste0(Id_code,"_c_seq")
+  if (nrow(cnum)==0){
+    return (list(titles=c(v_title),seqs=list(vseq),num_df=df))
+  }
+  
+  return (list(titles=c(v_title,c_title),seqs=list(vseq,cseq),num_df=df))
+  
+}
+
+
+get_res_info_in_matrix <- function(iden_code,hnumbering,lnumbering,res_info_dir){
+  #chnumbering,clnumbering: the numbering of ch, cl residues
+  pdb=strsplit(iden_code,"_")[[1]][1]
+  hl=strsplit(iden_code,"_")[[1]][2]
+  hid=paste0(pdb,"_",substr(hl,1,1))
+  lid=paste0(pdb,"_",substr(hl,2,2))
+  
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (list("hres"=NULL,"lres"=NULL,"hpdb"=NULL, "lpdb"=NULL))
+  }
+  
+  hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  hnum[,"IMGT_numbering_summary"] <-paste0(hnum$imgt_numbering,"(",hnum$VorC,")")
+  lnum[,"IMGT_numbering_summary"] <-paste0(lnum$imgt_numbering,"(",lnum$VorC,")")
+  
+  hres= if(hnumbering %in% hnum[,"IMGT_numbering_summary"]) hnum[hnum[,"IMGT_numbering_summary"]==hnumbering,"residue"] else "-"
+  lres= if(lnumbering %in% lnum[,"IMGT_numbering_summary"]) lnum[lnum[,"IMGT_numbering_summary"]==lnumbering,"residue"] else "-"
+  
+  hpdb= if(hnumbering %in% hnum[,"IMGT_numbering_summary"]) hnum[hnum[,"IMGT_numbering_summary"]==hnumbering,"pdb_numbering"] else NULL
+  lpdb= if(lnumbering %in% lnum[,"IMGT_numbering_summary"]) lnum[lnum[,"IMGT_numbering_summary"]==lnumbering,"pdb_numbering"] else NULL
+  
+  return (list("hres"=hres,"lres"=lres,"hpdb"=hpdb, "lpdb"=lpdb))
+  
+}
+
+plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
+  # if_alpha: the column name of the data table (which is defined in this function), can only be NULL or "if_both_interface"
+  if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+    return (ggplot(NULL))
+  }
+  
+  h_numbering <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+  l_numbering <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+  h_numbering <- h_numbering[h_numbering$residue!="-",]
+  l_numbering <- l_numbering[l_numbering$residue!="-",]
+  h_numbering[,"IMGT_numbering_summary"] <-paste0(h_numbering$imgt_numbering,"(",h_numbering$VorC,")")
+  l_numbering[,"IMGT_numbering_summary"] <-paste0(l_numbering$imgt_numbering,"(",l_numbering$VorC,")")
+  
+  #vh_res=h_numbering[h_numbering$VorC=="V",]
+  #vl_res=l_numbering[l_numbering$VorC=="V",]
+  #vh_start=vh_res[1,"IMGT_numbering_summary"]
+  #vh_end=vh_res[nrow(vh_res),"IMGT_numbering_summary"]
+  
+  mtrix=scan(paste0(mtrix_dir,"/",iden_code,".txt"))
+  mtrix=matrix(mtrix,nrow=nrow(l_numbering),ncol=nrow(h_numbering))
+  df=as.data.frame(mtrix)
+  colnames(df)<-h_numbering$IMGT_numbering_summary
+  rownames(df)<-l_numbering$IMGT_numbering_summary
+  
+  data <- df %>% 
+    rownames_to_column("lid") %>%
+    tidyr::pivot_longer(-c(lid), names_to = "hid", values_to = "value")
+  
+  
+  data=as.data.frame(data)
+  data$hid <- factor(data$hid,levels=h_numbering$IMGT_numbering_summary,ordered=TRUE)
+  data$lid <- factor(data$lid,levels=l_numbering$IMGT_numbering_summary,ordered=TRUE)
+  colnames(h_numbering)[which(colnames(h_numbering) =="if_interface")] <- "if_h_interface"
+  colnames(l_numbering)[which(colnames(l_numbering) =="if_interface")] <- "if_l_interface"
+  data <- merge(data, h_numbering[, c("IMGT_numbering_summary", "if_h_interface")], by.x = "hid", by.y = "IMGT_numbering_summary",
+                all.x = TRUE, all.y = FALSE, sort = FALSE)
+  data <- merge(data, l_numbering[, c("IMGT_numbering_summary", "if_l_interface")], by.x = "lid", by.y = "IMGT_numbering_summary",
+                all.x = TRUE, all.y = FALSE, sort = FALSE)
+  
+  data$if_both_interface <- apply(data[, c("if_h_interface", "if_l_interface", "hid", "lid")], MARGIN = 1, 
+                                  function(x){
+                                    y <- ifelse(as.numeric(x[1])==1 && as.numeric(x[2])==1,1,0)
+                                    y <- ifelse((grepl("V", x[3]) && grepl("V", x[4])) | 
+                                                  (grepl("C", x[3]) && grepl("C", x[4])), y, 0)
+                                    return(y)
+                                  })
+  data$if_both_interface <- factor(data$if_both_interface)
+  #data$h_res <- unlist(lapply(data$hid,function(x){h_numbering[h_numbering$IMGT_numbering_summary==x,"res_code"]}))
+  #return (data)
+  
+  ggplot(data,aes_string("hid","lid",fill="value",alpha=if_alpha))+
+    geom_tile()+
+    scale_fill_gradient(low="darkorange1", high="white", name = "distance\nbetween\nC-alpha's (Å)",na.value = "transparent")+
+    scale_alpha_discrete(range=c(0.1,1),guide="none") +
+    #geom_segment(aes)
+    labs(x="H numbering",y="L numbering")+
+    theme(
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank(),
+      #axis.line.x=element_line(color=ifelse(sapply(strsplit(data$hid,"\\("),"[[", 2)=="V)","blue","orange")),
+      axis.title.y = element_text(color = "black", size = 16, angle = 90, hjust = .5, vjust = .5, face = "bold"),
+      axis.title.x = element_text(color = "black", size = 16, angle = 0, hjust = .5, vjust = .5, face = "bold"),
+      panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+    )
+  
+  
+}
+
+vcab_number_usr_input_seq <- function(seq,region,hmmerpath){
+  # region can only be "v_region" or "full_seq"
+  if (is.null(seq)){
+    return (NULL)
+  }
+  num_df <- number_usr_input_seq (title, seq, region,hmmerpath)
+  if (is.null(num_df)){
+    return (NULL)
+  }
+  num_df_for_plot <- generating_vc_num_info(num_df)
+  get_numbering_plot(num_df_for_plot)
+}
+
+get_usr_selected_cnum <- function(iden_code,seqtype){
+  # vnum: the V num_df of the usr_inputted_sequence
+  # iden_code: the iden_code of the C sequence to be appended
+  # seqtype: returned by the input$seq_type/input$seq_type_2, can be the value "Hseq" or "Lseq"
+  if (is.null(seqtype)){
+    return (NULL)
+  }
+  chaintype <- ifelse(seqtype=="Hseq", "H", "L")
+  entry_num <- read.csv(paste0(res_info_dir,iden_code,"_",chaintype,"_res_info.csv"))
+  cnum <- entry_num[entry_num["VorC"]=="C",]
+  
+  cnum[,"number"] <- as.numeric(regmatches(cnum$imgt_numbering, gregexpr("[[:digit:]]+", cnum$imgt_numbering)))
+  cnum_insertion_code <- regmatches(cnum$imgt_numbering, gregexpr("[[:alpha:]]+", cnum$imgt_numbering))
+  cnum[,"insertion"] <- unlist(lapply(cnum_insertion_code, function(x) if(identical(x, character(0))) NA_character_ else x))
+  
+  cnum <- generating_vc_num_info(cnum)
+  cnum <- cnum[is.na(cnum["VorC"])==FALSE,c("imgt_numbering","res_code","number","insertion","VorC","region","x","y")]
+  cnum
+  
+}
+
+get_unpaired_repertoire_seq <- function (o_df,row_num,seq_cols,chainType_col){
+  df=o_df[row_num,]
+  
+  chaintype=o_df[row_num,chainType_col]
+  ct=ifelse(grepl("IGH",chaintype),"H","L")
+  seq=""
+  
+  for (i in seq_cols){
+    seq=paste0(seq,df[[i]])
+  }
+  seq <- gsub("\\.","",seq)
+  seq <- gsub("\\*","",seq)
+  return (list("chainType"=ct,"seq"=seq))
+  
+}
+
+get_paired_repertoire_seq <- function(o_df,row_num,cell_id_col,seq_cols,chainType_col){
+  cell_id=o_df[row_num,cell_id_col]
+  df=o_df[(o_df[[cell_id_col]]==cell_id)&(!(is.na(o_df[[chainType_col]]))),] 
+  # extract the rows with the specified cell_id and non-empty value indicating the chainType(heavy or Light)
+  #df=o_df[(o_df[[cell_id_col]]==cell_id),]
+  if(is.na(o_df[row_num,chainType_col])){
+    # If the selected row does not have the chainType value, return NULL
+    return (NULL)
+  }
+
+  if (nrow(df)!=2){
+    return (NULL)
+  }
+  else{
+    # if "IGH" is not in the chainType_col, or if the occurance of "IGH" is not 1
+    if (!("IGH" %in% names(table(df[[chainType_col]]))) ) return (NULL)
+    if (table(df[[chainType_col]])[["IGH"]]!=1) return (NULL)
+    
+    h_info=df[df[[chainType_col]]=="IGH",]
+    l_info=df[df[[chainType_col]]!="IGH",]
+    
+    h_seq=""
+    l_seq=""
+    
+    h_r_num=rownames(h_info)
+    l_r_num=rownames(l_info)
+    
+    for (i in seq_cols){
+      h_seq=paste0(h_seq,h_info[[i]])
+      l_seq=paste0(l_seq,l_info[[i]])
+      
+    }
+    h_seq <- gsub("\\.","",h_seq)
+    h_seq <- gsub("\\*","",h_seq)
+    l_seq <- gsub("\\.","",l_seq)
+    l_seq <- gsub("\\*","",l_seq)
+    message(c(h_r_num,l_r_num))
+    return (list("cell_id"=cell_id,"h_seq"=h_seq,"l_seq"=l_seq,"h_row_num"=h_r_num,"l_row_num"=l_r_num))
+    
+  }
+  
+}
+encode_url <- 'shinyjs.encode_url = function(par) {
+                var def_par = {txt: null};
+                par = shinyjs.getParams(par, def_par);
+                if (par.txt!=""){
+                  Shiny.onInputChange("encoded_url",encodeURIComponent(par.txt));
+                }
+
+}'
+decode_url <-'shinyjs.decode_url = function (par){
+                var def_par={txt:""};
+par = shinyjs.getParams(par, def_par);
+Shiny.onInputChange("decoded_url",decodeURIComponent(par.txt))
+}'
+
+region_color_lst <- list(FR1="#8A26CE",CDR1="#D9BAEE",
+                         FR2="#8A26CE",CDR2="#D9BAEE",
+                         FR3="#8A26CE",CDR3="#D9BAEE",
+                         FR4="#8A26CE",
+                         #""="#EF6548",
+                         "strand A"="#257F35",
+                         "strand B"="#257F35","BC turn"="#97C8A0",
+                         "strand C"="#257F35","CD turn"="#97C8A0",
+                         "strand D"="#257F35","DE turn"="#97C8A0",
+                         "strand E"="#257F35",
+                         "strand F"="#257F35", "FG loop"="#97C8A0", 
+                         "strand G"="#257F35")
+
+#region_color_lst <- list(FR1="#6BAED6",CDR1="#C6DBEF",
+#                         FR2="#6BAED6",CDR2="#C6DBEF",
+#                         FR3="#6BAED6",CDR3="#C6DBEF",
+#                         FR4="#6BAED6",
+#                         #""="#EF6548",
+#                         "strand A"="#EF6548",
+#                         "strand B"="#EF6548","BC turn"="#FDD49E",
+#                         "strand C"="#EF6548","CD turn"="#FDD49E",
+#                         "strand D"="#EF6548","DE turn"="#FDD49E",
+#                         "strand E"="#EF6548",
+#                         "strand F"="#EF6548", "FG loop"="#FDD49E", 
+#                         "strand G"="#EF6548")
+
+produce_mut_scan_df <- function(num_df,mut_df,score_col){
+  # This function combines the numbering infomation with the mut_scan table (rosetta or antiberty)
+  # Outputted df will be used to draw the plot
+  colnames(mut_df)[colnames(mut_df)=="PDB_numbering"] <- "pdb_numbering"
+  colnames(mut_df)[colnames(mut_df)=="position"] <- "pdb_numbering"
+  
+  colnames(mut_df)[colnames(mut_df)=="WT_AA"] <- "wt_aa"
+  colnames(mut_df)[colnames(mut_df)=="MUT_AA"] <- "mut_aa"
+  mut_df$id <- 1:nrow(mut_df)
+  mut_num_df <- merge(mut_df,num_df,by="pdb_numbering")
+  mut_num_df <- mut_num_df[order(mut_num_df$id),]
+  
+  #abty_num_df <- abty_num_df[abty_num_df$VorC=="V",]
+  
+  mut_num_df$color <- lapply(mut_num_df$region,function(x){ifelse(x %in% names(region_color_lst), region_color_lst[[x]], "#257F35") })
+  mut_num_df$banner_y <- 1
+  mut_num_df$normalized_score <- asinh(mut_num_df[[score_col]])
+  #abty_num_df$normalized_p <- asinh(abty_num_df$pseudolog_likelihood)
+  mut_num_df
+  
+}
+
+draw_mut_scan_plot <- function(mut_num_df,score_val,reverseColor){
+  # This function is used to produce the plot to draw the mut_scan plt, for rosetta and antiberty
+  # mut_num_df: the df containing both the score after mutation scanning and the numbering information, 
+  #             is the output of the function produce_mut_scan_df
+  # score_val: the value of the score which will be displayed when the user hover on the plt
+  # reverseColor: whether the color scheme for the value ploted would be reversed or not, can only be the value of T/F
+  
+  mut_num_highlight <- highlight_key(mut_num_df,~pdb_numbering)
+  maxValue <- max(c(max(mut_num_df$normalized_score),abs(min(mut_num_df$normalized_score))))
+  
+  base <- plot_ly(type="heatmap",mut_num_highlight) %>% 
+    group_by(pdb_numbering)
+  
+  mut_plt <- base %>%
+    group_by(pdb_numbering) %>%
+    add_heatmap(x=~pdb_numbering,y=~mut_aa,z=~normalized_score,
+                customdata=split(mut_num_df[,c("wt_aa","mut_aa","imgt_numbering",score_val)],seq_len(nrow(mut_num_df))),
+                hovertemplate=paste0("<b>Residue</b>:%{customdata.wt_aa}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>Mutation</b>:%{customdata.mut_aa}\n<b>",score_val,"</b>:\n%{customdata.",score_val,"}\n<extra></extra>"),
+                colorscale="RdBu",
+                zmin=-maxValue,
+                zmax=maxValue,
+                reversescale = reverseColor
+    ) %>%
+    layout(xaxis = list(
+      #rangeslider = list(type = "pdb_numbering"),
+      dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,categoryorder = "trace"
+    ),
+    yaxis=list(autorange="reversed",
+               title="",
+               categoryorder = "array",
+               categoryarray = c("A", "V", "I", "L", "M", "F","Y","W",
+                                 "S", "T", "N", "Q", "C", "G", "P",
+                                 "R", "H", "K", "D", "E"))
+    #,dragmode="select"
+    #,dragmode=FALSE
+    
+    ) #%>%
+  #hide_colorbar()
+  
+  banner_fig <- base %>%
+    add_markers(
+      x=~pdb_numbering,
+      y=~banner_y,
+      marker = list(color=~color,size=5,symbol="square"),
+      showlegend = F,
+      customdata=split(mut_num_df[,c("region","pdb_numbering","VorC","imgt_numbering","chain")],seq_len(nrow(mut_num_df))),
+      hovertemplate="<b>PDB numbering</b>:%{x}\n<b>region</b>:%{customdata.VorC}-%{customdata.region}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<extra></extra>"
+      
+      
+    )%>%
+    layout(xaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,categoryorder = "trace"
+    ),
+    #height=80,
+    #yaxis=list(range=c(0.5,1.5))
+    yaxis=list(dtick = 1,title="Residue strip",showticklabels=FALSE,showline=F,visible=FALSE) #
+    ,dragmode="select"
+    ,annotations=list(
+      xref="x domain",
+      yref="y domain",
+      x=0.05,
+      y=1.55,
+      text=HTML("<b>Residue strip</b>"),
+      showarrow=FALSE
+    )
+    )
+  
+  combine_fig <- subplot(banner_fig, mut_plt, heights = c(.08, .92), nrows=2,shareX=TRUE,titleY=FALSE) %>%
+    layout(showlegend = FALSE) %>%
+    highlight(on = "plotly_selected", dynamic = FALSE,off='plotly_deselect') 
+  #%>%
+  #onRender("
+  #    function(el,x){
+  #      $('#clear').on('click', function(){Plotly.restyle(graphDiv, {selectedpoints: [null]});});
+  #    }")
+  
+  combine_fig
+}
+
+
+clean_almissense_df <- function (almissense_df){
+  # This function is used to clean the alpha missense table, so that it is prepared to plot the banner
+  almissense_df$VorC <- "C"
+  almissense_df <-generating_vc_num_info(almissense_df)
+  almissense_df <- almissense_df[!(is.na(almissense_df["uniprot_id"])),]
+  
+  # Add color
+  color_map <- data.frame("region"=unique(almissense_df$region))
+  color_map["color"] <- c("#257F35", "#257F35", "#257F35", "#97C8A0", "#257F35","#97C8A0", "#257F35", "#97C8A0", "#257F35", "#257F35", "#97C8A0", "#257F35")
+  #color_map
+  almissense_df$id <- 1:nrow(almissense_df)
+  almissense_num_df=merge(almissense_df,color_map,by="region")
+  almissense_num_df$y <- 1
+  almissense_num_df=almissense_num_df[order(almissense_num_df$id),]
+  
+  almissense_num_df
 }
 
 
@@ -470,265 +1153,396 @@ ui <- fluidPage(
     src="./VCAb_logo.png",
     width = 270, height = 80
   ),
-  "V and C region bearing Antibody Database"),
-  windowTitle = "VCAb antibody database"),
+  "V and C region bearing Antibody Web Interface"),
+  windowTitle = "VCAb antibody application"),
   tags$em(paste0("Last updated: ",update_date)),
+  useShinyjs(),
+  extendShinyjs(
+    "enable_disable_tabPanel.js", functions = c( "enableTab", "disableTab", "removeTab",
+                                                     "disableTabWithoutBackground", "hitButton" )
+  ),
+  extendShinyjs(text=encode_url,functions="encode_url"),
+  extendShinyjs(text=decode_url,functions="decode_url"),
+  includeCSS( "www/enable_disable_tabPanel.css" ),
   navbarPage("",
              tabPanel("Search",
                       fluidRow(
-                        column(7,
-                               wellPanel(
-                                 # show the user input
-                                 tabsetPanel(id = "tabs",
-                                             tabPanel("PDB",
-                                                      textInput("pdb_txt","Enter the pdb ID","7c2l")
-                                                      
-                                             ),
-                                             tabPanel("Features",
-                                                      selectInput("iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
-                                                        helper(type="inline",title="Isotype", 
-                                                               content=c("There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                                         "Each isotype has different function.")),
-                                                      
-                                                      selectInput("Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
-                                                        helper(type="inline",title="Light chain type", 
-                                                               content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                                      selectInput("struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                                        helper(type="inline", title="Structural Coverage",
-                                                               content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                                         "Full antibody covers both Fab and Fc region")),
-                                                      selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                                        helper(type="inline",title="If has antigen",
-                                                               content=c("If the pdb file of this entry containing the antigen chain",
-                                                                         "Any: include the antibody in the results no matter if it has antigen or not",
-                                                                         "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                                         "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                                      
-                                                      selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                                        helper(type="inline",title="Experimental Method",
-                                                               content=c("The experimental method used to acquire the structure.")),
-                                                      numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                                        helper(type="inline",title="Resolution Threshold",
-                                                               content=c("This is used to acquire structures with resolution below the threshold.",
-                                                                         "The threshold can be set to value from 1 to 5.")) 
-                                                      # Just empty the input to allow the user to select ab without the limit of resolution.
-                                                      
-                                             ),
-                                             
-                                             tabPanel("Sequence",
-                                                      tabsetPanel(id="seq_tabs",
-                                                                  tabPanel("Search individual sequence",
-                                                                           textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                         value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
-                                                                           
-                                                                           # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                           radioButtons(inputId="seq_type", label="The type of this chain:", 
-                                                                                        choices=c("Heavy Chain" = "Hseq",
-                                                                                                  "Light Chain" = "Lseq",
-                                                                                                  "Don't know" = "unknown_seq")),
-                                                                           checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
-                                                                             helper(type="inline",title="Add the other paired H/L chain",
-                                                                                    content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
-                                                                                              "",
-                                                                                              "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                              "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain.")),
-                                                                           
-                                                                           conditionalPanel(
-                                                                             condition="input.two_chains==1",
-                                                                             textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
-                                                                                           value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
-                                                                             
-                                                                             # Radio buttons instead of checkBox are used because it only allow the user to select one option.
-                                                                             radioButtons(inputId="seq_type_2", label="The type of this chain:", 
-                                                                                          choices=c("Heavy Chain" = "Hseq",
-                                                                                                    "Light Chain" = "Lseq"))
-                                                                           )
-                                                                           
-                                                                           
-                                                                  ),
-                                                                  tabPanel("Search in batch",
-                                                                           fileInput("upload","Upload a fasta file (200 seqs max)"),
-                                                                           radioButtons(inputId="up_paired", label=" Sequences inside the uploaded file are: ",
-                                                                                        choices=c(
-                                                                                          "paired H and L chains" = "paired",
-                                                                                          "not-paired chains" = "unpaired"
-                                                                                        )) %>%
-                                                                             helper(type="inline",title="What is paired H & L chain?",
-                                                                                    content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
-                                                                                              "",
-                                                                                              "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
-                                                                                              "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
-                                                                                              "AntibodyName and HorL are connected by a hyphen.",
-                                                                                              "",
-                                                                                              "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
-                                                                                              "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table."))
-                                                                           
-                                                                  )),
-                                                      
-                                                      # horizontal line
-                                                      tags$hr(), 
-                                                      radioButtons(inputId="sele_bl_db", label="Select the region of your interest:",
-                                                                   choices=c("V region"="v_region",
-                                                                             "Full sequence (V & C)"="full_seq")) %>%
-                                                        helper(type="inline",title="Selection of the database to BLAST against",
-                                                               content = c("This selection would determine the database to be BLAST against.",
-                                                                           "",
-                                                                           "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
-                                                                           "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. "))
-                                             ),
-                                             tabPanel("CH1-CL Interface",
-                                                      tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20-30 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
-                                                      br(),br(),
-                                                      selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
-                                                                     options=list(maxOptions =5,
-                                                                                  placeholder = 'Please type iden_code here',
-                                                                                  onInitialize = I('function() { this.setValue(""); }'))) %>%
-                                                        #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
-                                                        helper(type="inline",title="iden_code", 
-                                                               content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
-                                                                         "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
-                                                                         "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
-                                                                         "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
-                                                               ))
-                                                      #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
-                                                      
-                                             )
-                                             
-                                 )
-                                 
-                               )
-                        ),
-                        
-                        column(5,
-                               wellPanel(
-                                 tabsetPanel(
-                                   tabPanel("Structural Viewer",
-                                            # show the structure viewer
-                                            textOutput("struc_selected_message") %>%
-                                            helper(type="inline",title="Structure viewer",
-                                                               content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
-									 "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
-									 "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
-									 "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
-									 "(items indicated in quotation marks will be changed as the mouse moves.)"
-                                                               )),
-					    NGLVieweROutput("structure"),
-                                            div(img(
-                                              src="./struc_viewer_legend.png",
-                                              width = 560#, height = 80
-                                            )),
-                                            checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
-                                            conditionalPanel(
-                                              condition="input.if_full_view==1",
-                                              checkboxGroupInput("full_view_option","Display options:",
-                                                                 c("Color antigen chain in this pdb"="color_antigen",
-                                                                   "Show other ligand(s) in this pdb"="show_ligand",
-                                                                   "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"))
-                                              
-                                              
-                                              
-                                              #)
-                                            ),
-                                            downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
-                                            
-                                   ),
-                                   tabPanel("Sequence Coverage",
-                                            plotOutput("seq_cov_plot")
+                        bsCollapse(id="collapse_panels",open="Query for antibody structures",
+                                   bsCollapsePanel("Query for antibody structures",
+                                                   tabsetPanel(id = "tabs",
+                                                               tabPanel("PDB",
+                                                                        textInput("pdb_txt","Enter the pdb ID","7c2l")
+                                                                        
+                                                               ),
+                                                               tabPanel("Features",
+                                                                        column(5,
+                                                                                selectInput("species","Species: ",choices=c("All",unique(vcab$Species)),
+                                                                                            label=helper(shiny_tag=HTML(paste("Species:"),HTML('&emsp;')), 
+                                                                                                         colour = "royalblue2",
+                                                                                              type="inline",title="Species",content=c("Species annotation for the antibody."))
+                                                                                            ),
+                                                                                selectInput("iso_txt","Isotype:",
+                                                                                            label=helper(shiny_tag=HTML(paste("Isotype:"),HTML('&emsp;')),color="royalblue2",
+                                                                                                         type="inline",title="Isotype", 
+                                                                                                         content=c("Isotypes are classified by the sequence of C region on H chain.",
+                                                                                                                   "Each isotype has different function.")
+                                                                                                         ),
+                                                                                            choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))), 
+                                                                                  
+                                                                                
+                                                                                selectInput("Ltype_txt","Light chain type:",
+                                                                                            label=helper(
+                                                                                              shiny_tag=HTML(paste("Light chain type:"),HTML('&emsp;')),
+                                                                                              color="royalblue2",
+                                                                                              type="inline",title="Light chain type", 
+                                                                                              content=c("There are two light chain types in human, classified by the sequence of C region on L chain.")
+                                                                                            ),
+                                                                                            choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))
+                                                                                            ),
+                                                                                selectInput("struc_cov","Structural Coverage:",
+                                                                                            label=helper(
+                                                                                              shiny_tag=HTML(paste("Structural Coverage:"),HTML('&emsp;')),
+                                                                                              color="royalblue2",
+                                                                                              type="inline", title="Structural Coverage",
+                                                                                              content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                                                                                        "Full antibody covers both Fab and Fc region")
+                                                                                            ),
+                                                                                            choices=c("All",sort(unique(vcab$Structural.Coverage)))
+                                                                                            )
+                                                                                ),
+                                                                        column(5,offset=2,
+                                                                               selectInput("if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                                                                                 helper(type="inline",title="If has antigen",
+                                                                                        content=c("If the pdb file of this entry containing the antigen chain",
+                                                                                                  "Any: include the antibody in the results no matter if it has antigen or not",
+                                                                                                  "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                                                                                  "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                                                                               
+                                                                               selectInput("exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                                                                                 helper(type="inline",title="Experimental Method",
+                                                                                        content=c("The experimental method used to acquire the structure.")),
+                                                                                
+                                                                                
+                                                                               numericInput("res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                                                                                 helper(type="inline",title="Resolution Threshold",
+                                                                                        content=c("This is used to acquire structures with resolution below the threshold.",
+                                                                                                  "The threshold can be set to value from 1 to 5.")) 
+                                                                               
+                                                                                # Just empty the input to allow the user to select ab without the limit of resolution.
+                                                                                
+                                                                                ),
+                                                                        fluidRow()
+                                                                        
+                                                                        
+                                                               ),
+                                                               
+                                                               
+                                                               tabPanel("Sequence",
+                                                                        tabsetPanel(id="seq_tabs",
+                                                                                    tabPanel("Search individual sequence",
+                                                                                             fluidRow(
+                                                                                               column(5,
+                                                                                                      textAreaInput("seq_txt","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                                    value="EVQLVESGAEVKKPGASVKVSCKVSGYTLTELSMHWVRQAPGKGLEWMGGFDPEDGETMYAQKFQGRVTMTEDTSTDTAYMESSLRSEDTAVYYCATSTAVAGTPDLFDYYYGMDVWGQGTTVTVSSASTKGPSVFPLAPSSKSTSGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKKVEPK"),
+                                                                                                      
+                                                                                                      # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                                      radioButtons(inputId="seq_type", label="The type of this chain:", 
+                                                                                                                   choices=c("Heavy Chain" = "Hseq",
+                                                                                                                             "Light Chain" = "Lseq",
+                                                                                                                             "Don't know" = "unknown_seq")),
+                                                                                                      checkboxInput(inputId="two_chains",label="Add the other paired H/L chain",FALSE) %>%
+                                                                                                        helper(type="inline",title="Add the other paired H/L chain",
+                                                                                                               content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing, select this check box to enable the input of the other paired H or L chain.",
+                                                                                                                         "",
+                                                                                                                         "When the paired chains are inputted, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                         "Please note: When the other paired chain is added, the chain types selected for these two sequences must be one H chain and one L chain."))
+                                                                                                      
+                                                                                                      ),
+                                                                                               column(4,
+                                                                                                      
+                                                                                                     uiOutput("ui_num_plot_usr1")
+                                                                                                      ),
+                                                                                               column(3,
+                                                                                                      uiOutput("ui_num_info_seq1")
+                                                                                                      )
+                                                                                               
+                                                                                             ),
+                                                                                      
+                                                                                             conditionalPanel(
+                                                                                               condition="input.two_chains==1",
+                                                                                               fluidRow(
+                                                                                                 column(5,
+                                                                                                        textAreaInput("seq_txt_2","Enter the amino acid sequence of the chain",width="600px",rows=5,resize="both",
+                                                                                                                      value="EIVMTQSPLSSPVTLGQPASISCRSSQSLVHSDGNTYLSWLQQRPGQPPRLLIYKISNRFSGVPDRFSGSGAGTDFTLKISRVEAEDVGVYYCTQATQFPYTFGQGTKVDIKRTVAAPSVFIFPPSDEQLKSGTASVVCLLNNFYPREAKVQWKVDNALQSGNSQESVTEQDSKDSTYSLSSTLTLSKADYEKHKVYACEVTHQGLSSPVTKSFNRGEC"),
+                                                                                                        
+                                                                                                        # Radio buttons instead of checkBox are used because it only allow the user to select one option.
+                                                                                                        radioButtons(inputId="seq_type_2", label="The type of this chain:", 
+                                                                                                                     choices=c("Heavy Chain" = "Hseq",
+                                                                                                                               "Light Chain" = "Lseq"))
+                                                                                                        ),
+                                                                                                 column(4,
+                                                                                                        uiOutput("ui_num_plot_usr2")
+                                                                                                        ),
+                                                                                                 column(3,
+                                                                                                        uiOutput("ui_num_info_seq2")
+                                                                                                 )
+                                                                                               )
+                                                                                               
+                                                                                             )
+                                                                                             
+                                                                                             
+                                                                                    ),
+                                                                                    tabPanel("Search in batch",
+                                                                                             fluidRow(
+                                                                                               column(4,
+                                                                                                      uiOutput("ui_up_fasta"),
+                                                                                                      #fileInput("upload","Upload a fasta file (200 seqs max)"),
+                                                                                                      helpText("Load the example fasta file of different format:",
+                                                                                                               br(),
+                                                                                                               actionLink(inputId = "ex_unpaired_seq",
+                                                                                                                          label="Example of unpaired sequence"),br(),
+                                                                                                               actionLink(inputId = "ex_paired_seq",
+                                                                                                                          label="Example of paired sequence"),br()
+                                                                                                      ),
+                                                                                                      actionButton("clear_up_fasta","Clear uploaded file"),
+                                                                                                      radioButtons(inputId="up_paired", 
+                                                                                                                   label=helper(
+                                                                                                                     shiny_tag = "Sequences inside the uploaded file are:",color="royalblue2",
+                                                                                                                     type="inline",title="What is paired H & L chain?",
+                                                                                                                     content=c("Sequences of the paired H & L chains can be acquired via single cell sequencing.",
+                                                                                                                               "",
+                                                                                                                               "In order for your sequences to be picked up as \"paired\", the title of paired H & L sequences in the uploaded file should be in this format: ",
+                                                                                                                               "AntibodyName-HorL, where AntibodyName is the name of the antibody, such as \"7c2l_HL\"; HorL can only be letter \"H\" or \"L\", in order to specify if the sequence belongs to H or L chain.",
+                                                                                                                               "AntibodyName and HorL are connected by a hyphen.",
+                                                                                                                               "",
+                                                                                                                               "Under the paired mode, the similarity of both H chain and L chain would be taken into consideration, in order to find VCAb entries with similar sequence.",
+                                                                                                                               "If the title of the fasta sequence is not in the format specified above, the sequence would not be picked up as paired, and the unpaired sequences would be tabulated below the result table.")
+                                                                                                                   ),
+                                                                                                                   
+                                                                                                                   choices=c(
+                                                                                                                     "not-paired chains" = "unpaired",
+                                                                                                                     "paired H and L chains" = "paired"
+                                                                                                                   )) 
+                                                                                                      ),
+                                                                                               column(8,
+                                                                                                      verbatimTextOutput("up_ex_fasta")
+                                                                                                      )
+                                                                                             )
+                                                                                             
+                                                                                             
+                                                                                    )),
+                                                                        
+                                                                        # horizontal line
+                                                                        tags$hr(), 
+                                                                        fluidRow(
+                                                                          column(5,
+                                                                                 radioButtons(inputId="sele_bl_db",
+                                                                                              label=helper(
+                                                                                                shiny_tag="Select the region of your interest:        r",color="royalblue2",
+                                                                                                type="inline", title="Selection of the database to BLAST against",
+                                                                                                content=c("This selection would determine the database to be BLAST against, and the region will be numbered according to IMGT scheme.",
+                                                                                                          "",
+                                                                                                          "If the \"V region\" is selected, the sequence would be BLAST against the database containing only sequences of V region, meaning the search would be based on the V region similarity, without the consideration of C region.",
+                                                                                                          "If \"Full sequence (V & C)\" is selected, the search would be based on the sequence similarity of both V and C region. ")),
+                                                                                              choices=c(
+                                                                                                "Full sequence (V & C)"="full_seq",
+                                                                                                "V region"="v_region"))
+                                                                                 ),
+                                                                          column(4,
+                                                                                 # To display the option to add usr-selected C sequence
+                                                                                 uiOutput("ui_append_c_seq")
+                                                                                 ),
+                                                                          column(3,
+                                                                                 # To display the Download button to download numbered sequence shown in the plot
+                                                                                 uiOutput("ui_download_num_usr_seq")
+                                                                                 )
+                                                                        )
+                                                                        
+                                                               ),
+                                                               tabPanel("CH1-CL Interface",
+                                                                        tags$em("Get VCAb antibody entries with similar residue contacts at the CH1-CL interface. (Note: Please wait for roughly ~ 20 seconds for the server to load all pairwise comparisons of CH1-CL interfaces across VCAb entries.)"),
+                                                                        br(),br(),
+                                                                        selectizeInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),
+                                                                                       options=list(maxOptions =5,
+                                                                                                    placeholder = 'Please type iden_code here',
+                                                                                                    onInitialize = I('function() { this.setValue(""); }'))) %>%
+                                                                          #selectInput("pdb_interface","Enter the iden_code",choices=unique(vcab$iden_code),selectize = TRUE) %>%
+                                                                          helper(type="inline",title="iden_code", 
+                                                                                 content=c("In VCAb, each entry has a unique iden_code, in the format of \"PDBID_HL\", where PDBID is the four-character PDB ID of the antibody, HL are the chain ID of the heavy/light chain.",
+                                                                                           "If you don't know the heavy/light chain ID, just type the PDBID in the searching box. VCAb iden_code with this PDBID will be automatically listed in the option list as you are typing, then you can click on the corresponding VCAb iden_code to select it.","",
+                                                                                           "CH1-CL interface similarity is ranked by a metric which we termed 'interface difference index'. This is based on considering residue contacts between the CH1 and CL domains for each structure, and comparing these contacts between every pair of structures. The smaller the value, the more similar CH1-CL interface it has, with respect to the query iden_code. For detailed explanation, please go to the VCAb Documentation.","",
+                                                                                           "NOTE: Currently the interface similarity search function only support antibodies within VCAb."
+                                                                                 ))
+                                                                        #textInput("pdb_interface","Enter the iden_code","7c2l_HL")
+                                                                        
+                                                               ),
+                                                               tabPanel("Repertoire",
+                                                                        fluidRow(
+                                                                          column(3,
+                                                                                 uiOutput("ui_reper_uploaded"),
+                                                                                 #h3("Upload repertoire table"),
+                                                                                 #fileInput("up_repertoire",
+                                                                                 #          label="Upload repertoire table",
+                                                                                 #          accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv")),
+                                                                                 
+                                                                                 fluidRow(
+                                                                                   column(9,
+                                                                                          tags$head(tags$style(HTML(".not_bold label {font-weight:normal;}"))),
+                                                                                          div(
+                                                                                            textInput("reper_file", "Or input a http address for repertoire file here:", 
+                                                                                                      value=""
+                                                                                                      #value="https://mabra.biomed.kcl.ac.uk/BrepExports/VCAb14fc2f644d21c8"
+                                                                                                      ),
+                                                                                            class="not_bold"
+                                                                                          )
+                                                                                          
+                                                                                          ),
+                                                                                   column(3,
+                                                                                          br(),br(),
+                                                                                          actionButton("reper_url","Upload")
+                                                                                          )
+                                                                                 ),
+                                                                                 helpText("Load the example file for different format:",
+                                                                                          br(),
+                                                                                          actionLink(inputId = "ex_airr_reper_file",
+                                                                                                     label="AIRR example"),br(),
+                                                                                          actionLink(inputId = "ex_cranger_reper_file",
+                                                                                                     label="Cell ranger example"),br(),
+                                                                                          actionLink(inputId = "ex_cus_reper_file",
+                                                                                                     label="customized repertoire file"),br()
+                                                                                 ),
+                                                                                 actionButton("clear_reper_file","Clear uploaded repertoire file/url"),
+                                                                                 
+                                                                                 radioButtons(inputId="reper_format", 
+                                                                                              label=helper(
+                                                                                                shiny_tag="Please select the format of the repertoire file: ",color="royalblue2",
+                                                                                                type="inline", title="Selection of the format of repertoire file",
+                                                                                                content=HTML(" Please check this <a href=\"https://github.com/Fraternalilab/VCAb/wiki/Query-Input#select-the-format-of-the-repertoire-file\", target=\"_blank\">link</a> for details.
+                                                                                                             ")
+                                                                                              ),
+                                                                                              choices=c("AIRR" = "airr",
+                                                                                                        "Cell ranger" = "cell_ranger",
+                                                                                                        "Customized" = "customized")),
+                                                                                 
+                                                                                 
+                                                                                 
+                                                                                 radioButtons(inputId="reper_search_mode",
+                                                                                              label=helper(
+                                                                                                shiny_tag="Please select the searching mode: r",color="royalblue2",
+                                                                                                type="inline", title="Selection of the searching mode",
+                                                                                                content=HTML(
+                                                                                                  "<b> Unpaired chains: </b><br>
+                                                                                                  The structural hits would be ranked by the percentage identity of the selected chain only. <br><br>
+                                                                                                  <b> Paired H-L chains: </b><br>
+                                                                                                  The program will first find the other paired heavy/light chain, indicated by bearing the same cell_id/barcode,
+                                                                                                  then the structural hits is given by considering both the percentage identity of heavy and light chain.
+                                                                                                  
+                                                                                                  "
+                                                                                                )
+                                                                                              ),
+                                                                                              choices=c("Unpaired chains" = "unpaired",
+                                                                                                        "Paired H-L chains" = "paired")
+                                                                                              ),
+                                                                                 uiOutput("ui_repertoire_customized_cell_id"),
+                                                                                 uiOutput("ui_repertoire_customized"),
+                                                                                 HTML("<b> Please select one entry (by clicking the row of the table) of the uploaded repertoire file to start search </b>")
+                                                                                 
+                                                                                 
+                                                                          ),
+                                                                          column(9,
+                                                                                 DT::dataTableOutput("repertoire_table")
+                                                                                 
+                                                                          )
+                                                                        )
+                                                                        
+                                                                        
+                                                                        )
+                                                               
+                                                   ),
+                                                   
+                                                   actionButton("search","Search")#,
+                                                   
+                                                   
                                    )
-                                 )
-                                 
-                                 
-                               )
-                        )
+                                   )
+                        
+                        
                       ),
                       fluidRow(
+                        tagList(
+                          tags$head(tags$style(type="text/css", "
+                                             #loadmessage {
+                                               
+                                               
+                                               width: 100%;
+                                               padding: 5px 0px 5px 0px;
+                                               text-align: center;
+                                               font-weight: bold;
+                                               font-size: 100%;
+                                               color: #000000;
+                                               background-color: #FF5733;
+                                               z-index: 105;
+                                               opacity: 0.6;
+                                               }
+                                               "),
+                                    tags$script(
+                                      type="text/javascript",src = "busy.js"
+                                    )
+                                    )
+                        ),
+                        
+                        #position: fixed;top: 0px;left: 0px;
+                        
+                        conditionalPanel(condition="$('html').hasClass('shiny-busy')",
+                                         tags$div(class="busy","Loading...",id="loadmessage"))
+                      ),
+                      fluidRow(
+                        
+                        
                         column(7,
                                wellPanel(
-                                 # show the antibody information table
-                                 actionButton("search","Search"),
-                                 textOutput("chain_type_message"),
-                                 selectInput("file_col","Select the additional column(s) you want to display",
-                                             choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
-                                             multiple=TRUE)%>%
-                                   helper(type="inline",title="Display additional columns",
-                                          content=c("For simplicity, some columns of the antibody table below are hidden",
-                                                    "By selecting the column names listed here, you can acquire the information in these columns",
-                                                    "Multiple columns can be selected at the same time")),
-                                 fluidRow(
-                                   column(4,
-                                          downloadButton("download_subset",label="Download search results")
-                                   ),
-                                   column(8,
-                                          checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
-                                            helper(type="inline",title="Download search results",
-                                                   content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
-                                                             "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
-                                                             "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
-                                                   ))
-                                   )
-                                   
-                                 ),
-                                 
-                                 br(),
-                                 #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
-                                 conditionalPanel(#condition="input.filter_result==1",
-                                   condition="input.tabs==\"Sequence\" ",
-                                   # The following options are the same as the "Features" tab:
-                                   hr(),
-                                   
-                                   column(5,
-                                          strong ("Filter the results by features:"),
-                                          br(),br(),
-                                          selectInput("flt_iso_txt","Isotype:",choices=c("All","IgA1","IgA2","IgD","IgE","IgG1","IgG2","IgG3","IgG4","IgM")) %>%
-                                            helper(type="inline",title="Isotype", 
-                                                   content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
-                                                             "Each isotype has different function.")),
-                                          
-                                          selectInput("flt_Ltype_txt","Light chain type:",choices=c("All","kappa","lambda")) %>%
-                                            helper(type="inline",title="Light chain type", 
-                                                   content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
-                                          selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
-                                            helper(type="inline", title="Structural Coverage",
-                                                   content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
-                                                             "Full antibody covers both Fab and Fc region"))
-                                   ),
-                                   column(5, offset=2,
-                                          
-                                          selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
-                                            helper(type="inline",title="If has antigen",
-                                                   content=c("If the pdb file of this entry containing the antigen chain",
-                                                             "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
-                                                             "Yes: only include the antibody if the pdb file contains the antibody chain",
-                                                             "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
-                                          selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
-                                            helper(type="inline",title="Experimental Method",
-                                                   content=c("The experimental method used to acquire the structure.")),
-                                          numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
-                                            helper(type="inline",title="Resolution Threshold",
-                                                   content=c("This is used to acquire structures with resolution below the threshold.",
-                                                             "The threshold can be set to value from 1 to 5.")) 
-                                          # Just empty the input to allow the user to select ab without the limit of resolution.
-                                   )#,
-                                   #actionButton("filter","Filter the Results")
-                                   
-                                 ),
-                                 
-                                 hr(),
-                                 DT::dataTableOutput("ab_info_table"),
-                                 textOutput("unpair_message"),
-                                 DT::dataTableOutput("unpaired_table")
-                                 
-                               )
-                        ),
-                        column(5,
-                               wellPanel(
+                                 HTML("<b> Enter the query input into the panel above, select one entry in the \"Antibody information\"
+                                      tab to enable the other tab panels.</b>
+                                      "),
                                  tabsetPanel(id="residue_list_panel",
-                                             tabPanel("CH1-CL interface residues",
+                                             tabPanel("Antibody information",
+                                                      # show the antibody information table
+                                                      
+                                                      textOutput("chain_type_message"),
+                                                      uiOutput("ab_info_buttons_ui"),
+                                                      
+                                                      br(),
+                                                      #checkboxInput(inputId="filter_result",label="Filter the result by features",FALSE),
+                                                      uiOutput("ui_further_filter_results"),
+                                                      
+                                                      hr(),
+                                                      DT::dataTableOutput("ab_info_table"),
+                                                      br(),
+                                                      uiOutput("ui_unpair_message"),
+                                                      DT::dataTableOutput("unpaired_table")
+                                                      
+                                               
+                                             ),
+                                             tabPanel("Fab H-L contact map",value="Fab_H-L_contact_map",
+                                                      uiOutput("matrix_hover_info"),
+                                                      br(),
+                                                      uiOutput("interface_matrix_buttons"),
+                                                      plotOutput("int_matrix_plot",width="680px",height="600px",
+                                                                 hover=hoverOpts("matrix_hover",delay=100,delayType="debounce"),
+                                                                 brush = brushOpts(
+                                                                   id = "matrix_brush",
+                                                                   delay=1000,delayType="debounce",
+                                                                   resetOnNew = FALSE
+                                                                 )
+                                                      )
+                                                      
+                                                      ),
+                                             tabPanel("H-L interface residues",value="H-L_interface_residues",
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       textOutput("pops_message") %>%
-                                                      helper(type="inline",title="CH1-CL interface residues",
+                                                        helper(type="inline",title="CH1-CL interface residues",
                                                                content=c("Interface analysis was performed using POPSComp (Cavallo, Kleinjung and Fraternali NAR (2003), doi: 10.1093/nar/gkg601. (github: https://github.com/Fraternalilab/POPScomp).","",
-									 "Amino acid numbering follows the numbering scheme in the displayed/analysed .pdb file."
+                                                                         "Amino acid numbering follows the numbering scheme in the displayed/analysed .pdb file."
                                                                )),
                                                       br(),
                                                       
@@ -742,15 +1556,90 @@ ui <- fluidPage(
                                                       )
                                                       
                                              ),
-                                             tabPanel("Disulfide Bond",
+                                             tabPanel("Disulfide Bond",value="Disulfide_Bond",
                                                       br(),
                                                       # show the filtered(DSASA <= 15) POPSComp table: show H_pops & L_pops separately
                                                       actionButton("clear_sele_disulfide","Clear selected residues"),
                                                       checkboxInput(inputId = "zoom_in_sele_disulfide",label="Zoom in to selected Cysteines",FALSE),
                                                       DT::dataTableOutput("disulfide_info")
-                                             )
+                                             ),
+                                             tabPanel("Mutation scanning",value="pmut_scan",
+                                                      br(),
+                                                      radioButtons(inputId="pmut_chain_tabs", label="Choose the chain to display:", 
+                                                                   choices=c("Heavy chain" = "Heavy",
+                                                                             "Light chain" = "Light"
+                                                                   )),
+                                                      br(),
+                                                      
+                                                      #DT::dataTableOutput("pmut_num_table")#,
+                                                      tabsetPanel(id="mut_scan_plots",
+                                                                  tabPanel("Rosetta pmut",value="rosetta_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can select a region (<font color=\"#8A26CE\">Purple</font> for V region and <font color=\"#257F35\">Green</font> for C region) on the residue strip (by dragging a box on the strip) below to zoom into the selected fragment in 3D viewer, double click to unselect</em></div>"),
+                                                                           plotlyOutput("rosetta_pmut_scan_plt"),
+                                                                           downloadButton("download_rpmut",label="Download data for the plot")
+                                                                           ),
+                                                                  tabPanel("AntiBERTy pseudo-log likelihood",value="abty_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can select a region (<font color=\"#8A26CE\">Purple</font> for V region and <font color=\"#257F35\">Green</font> for C region) on the residue strip (by dragging a box on the strip) below to zoom into the selected fragment in 3D viewer, double click to unselect</em></div>"),
+                                                                           plotlyOutput("antiberty_plt"),
+                                                                           downloadButton("download_abty_plt",label="Download plot and data")
+                                                                           ),
+                                                                  tabPanel("AlphaMissense Pathogenicity",value="am_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can hover on the residue strip to show the information related to each location.</em></div>"),
+                                                                           plotlyOutput("am_plt"),
+                                                                           downloadButton("download_am_plt",label="Download plot and data")
+                                                                           )
+                                                                  ),
+                                                      #DT::dataTableOutput("mut_selected_table")
+                                                      verbatimTextOutput('mut_selected_table')
+                                                       
+                                                      #
+                                          
+                                                      #plotOutput("rosetta_pmut_scan_plt")
+                                                      )
                                              
                                  )
+                               )
+                        ),
+                        column(5,
+                               wellPanel(
+                                 tabsetPanel(id="struc_seq_viewer",
+                                   tabPanel("Structural Viewer",value="Structural_Viewer",
+                                            # show the structure viewer
+                                            textOutput("struc_selected_message") %>%
+                                              helper(type="inline",title="Structure viewer",
+                                                     content=c("Here users can interactively inspect (zoom, hover etc.) the structure selected in the Antibody Information (bottom left) panel. Explanations:", "",
+                                                               "1. Amino acid numbering follows the numbering scheme in the visualised .pdb file.", "",
+                                                               "2. Hovering over the structure you will see pop up bubble with information of the residue indicated by your mouse. This is the format of this print-out message:", "",
+                                                               "atom : [ 'residue three-letter code' ] 'residue number' : 'chain identifier' . 'atom name' ()",
+                                                               "(items indicated in quotation marks will be changed as the mouse moves.)"
+                                                     )),
+                                            NGLVieweROutput("structure"),
+                                            #tags$head(
+                                            #  tags$style(HTML("input[name=if_full_view][value='0'] { display: none }"))
+                                            #),
+                                            uiOutput("viewer_legend")
+                                            
+                                   ),
+                                   tabPanel("Sequence Coverage",value="Sequence_Coverage",
+                                            plotOutput("seq_cov_plot")
+                                   ),
+                                   tabPanel("Sequence numbering",value="Sequence_numbering",
+                                            radioButtons(inputId="num_chain_tabs", label="Choose the sequence to display:", 
+                                                         choices=c("Heavy chain sequence" = "Heavy",
+                                                                   "Light chain sequence" = "Light"
+                                                         )),
+                                            plotOutput("numbering_plot",width="580px",height="450px",
+                                                       hover=hoverOpts("numbering_hover",delay=100,delayType="debounce",nullOutside=FALSE)),
+                                            uiOutput("hover_info"),
+                                            downloadButton("download_num_seq",label="Download displayed numbered sequence")
+                                            
+                                   )#,
+                                   #tabPanel("test result out",
+                                   #         DT::dataTableOutput("brushed_table")
+                                   #         )
+                                 )
+                                 
+                                 
                                )
                         )
                       )
@@ -759,7 +1648,8 @@ ui <- fluidPage(
                       sidebarLayout(
                         sidebarPanel(
                           checkboxGroupInput(inputId = "stat", label="The statistics of VCAb based on:",
-                                             choices=c("Isotypes"="Htype_val",
+                                             choices=c("Species"="Species",
+                                                       "Isotypes"="Htype_val",
                                                        "Light chain types"="Ltype_val",
                                                        "Structural Coverage"="Structural.Coverage")),
                           uiOutput("total_ab_enties")
@@ -773,34 +1663,63 @@ ui <- fluidPage(
              ),
              tabPanel("Download",
                       ## Allow the user to download the entire database
+                      h5("Download all the entris in VCAb here:"),
                       downloadButton("download",label="Download all entries in VCAb"),
-		      br(),
-		      downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
-                      br(),br(),br(),br(),br(),br()
+                      br(),br(),br(),
+                      h5("Download the all the numbered sequences in VCAb here:"),
+                      downloadButton("download_all_num_seqs",label="Download all the numbered sequences in VCAb"),
+                      #downloadButton("download_unusual",label="Download all 'unusual' antibody structures removed in VCAb"),
+                      br(),br(),br()
                       
              ),
+             tabPanel("Documentation",
+                      navlistPanel( widths = c(3,9),
+                        tabPanel("Home",includeHTML("www/Home.html")),
+                        tabPanel("Query Input",includeHTML("www/Query-Input.html")),
+                        tabPanel("In silico mutational scanning",includeHTML("www/In-silico-mutational-scanning-profile.html")),
+                        tabPanel("Antibody Information",includeHTML("www/Antibody-Information.html")),
+                        tabPanel("Interactive 3D Structure Viewer and Sequence Viewer",includeHTML("www/Interactive-3D-Structure-Viewer-and-Sequence-Viewer.html")),
+                        tabPanel("Assemble a collection of antibody structures",includeHTML("www/Antibody-structural-space.html"))
+                        
+                      )
+               
+             ),
+             
              tabPanel("About",
                       h5(paste0("Version: ", release)),
                       br(),
                       h5("Documentation can be found in the following link:"),
+                      
                       tags$a(href="https://github.com/Fraternalilab/VCAb/wiki", "VCAb github wiki"),
-                      h5(),
-                      h5("If you have used VCAb in your work, please cite: "),
-                      br(),
-                      h5("Guo Dongjun, Joseph Chi-Fung Ng, Deborah K Dunn-Walters, Franca Fraternali. VCAb: An accurate and queryable database of isotype annotation for human antibody structures. Under review, 2022"),
-                      br(),
-                      div(img(src="./Fig2_VCAb_db.png",
-                              width = 1080#, height = 80
-                              )),
-                      h5("VCAb (V and C region bearing antibody) database is established with the purpose to clarify the annotation of isotype and structural coverage of human antibody structures, and provide an accessible and easily consultable resource. For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. Users can search the VCAb by entering the PDB identifiers, attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches. Researchers interested in antibody annotations and structures would benefit from the VCAb database, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues. "),
+                      br(),br(),br(),
+                      HTML('<center><img src="VCAb_proposal_figure_DG_JN.jpg" width="800"></center>'),
+                      #div(img(src="VCAb_proposal_figure_DG_JN.jpg",
+                      #        width = 880#, height = 80
+                      #),style="display: block; margin-left: auto; margin-right: auto;"),
+                      HTML("VCAb (V and C region bearing antibody) web interface is established with the purpose to
+                          link repertoire, sequence and available antibody experimental structure space,
+                          clarify the annotation of isotype and structural coverage of human antibody structures, 
+                         and provide an accessible and easily consultable resource. 
+                          <br>
+                         <br> Users can search the VCAb by uploading repertoire files, entering the PDB identifiers, 
+                         attributes (e.g. isotype, structural coverage, experimental methods, etc.), single sequence or sequences in batches.
+                         For each antibody entry, users can search for its sequence, isotype, structure and details of the CH1-CL interface. 
+                         The structure and the CH1-CL interface residues of the antibody can be visualized and inspected in the web server. 
+                         
+                         Researchers interested in antibody annotations and structures would benefit from the VCAb web server, especially due to the curated information it provides on isotype, light chain type and the CH1-CL interface residues.
+                          <br><br><br>"
+                           
+                      ),
                       br()
-             )	     
+             )
+             	     
   )
   
 )
 
 ####################### Server #######################
 server <- function(input,output,session){
+  options(shiny.maxRequestSize=30*1024^2) # change the max limit of the uploaded file to 30 MB
   
   observe_helpers(withMathJax = TRUE) # allow the display of the helper message when the user click on the question mark next to some text.
   
@@ -811,17 +1730,155 @@ server <- function(input,output,session){
   ## Assign different contents to the panel of ab_info_table when different tabs are selected in the input panel
   tabs_value <- reactive({input$tabs}) # the title of the tabs
   seq_sub_tab_value <- reactive({input$seq_tabs})
+  result_tabs_value <- reactive({input$residue_list_panel})
   ab_info <- reactiveValues() # The reactive value to hold the table of antibody information
   two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
   
+  ## To upload fasta files:
+  output$ui_up_fasta <- renderUI({
+    input$clear_up_fasta
+    fileInput("upload","Upload a fasta file (200 seqs max)")
+  })
+  
+  ## Record the uploaded file state for the Sequence:Search in batch panel
+  up_fasta_state <- reactiveValues(state=NULL) # the state for the uploaded fasta file
+  observeEvent(input$upload,{up_fasta_state$state <- 'uploaded'})
+  
+  example_fasta_state <- reactiveValues(unpaired=NULL,paired=NULL) # the state for the uploaded fasta EXAMPLE file
+  observeEvent(input$ex_unpaired_seq,{
+    example_fasta_state$unpaired <- "uploaded"
+    updateRadioButtons(session,"up_paired",selected="unpaired")
+    output$up_ex_fasta<-renderText({paste(readLines("example_fasta_search/example_unpaired_seqs.fasta"),collapse="\n")})
+    })
+  observeEvent(input$ex_paired_seq,{
+    example_fasta_state$paired <- "uploaded"
+    updateRadioButtons(session,"up_paired",selected="paired")
+    output$up_ex_fasta<-renderText({paste(readLines("example_fasta_search/example_paired_seqs.fasta"),collapse="\n")})
+    })
+  # Reset the state of the uploaded fasta files
+  observeEvent(input$clear_up_fasta,{
+    up_fasta_state$state <- NULL
+    example_fasta_state$unpaired <- NULL
+    example_fasta_state$paired <- NULL
+    updateRadioButtons(session,"up_paired",selected="unpaired")
+    output$up_ex_fasta<-renderText({NULL})
+    ab_info$ab_info_df <- NULL
+  })
+  
+  total_up_fasta <- reactive({
+    if (!(is.null(up_fasta_state$state))){
+      return (input$upload$datapath)
+    }else{
+      # check if the user click the action link to load example fasta
+      if (!(is.null(example_fasta_state$unpaired)) && !(is.null(input$ex_unpaired_seq)) && input$ex_unpaired_seq>0){
+        return ("example_fasta_search/example_unpaired_seqs.fasta")
+      }
+      if (!(is.null(example_fasta_state$paired)) && !(is.null(input$ex_paired_seq)) && input$ex_paired_seq>0){
+        return ("example_fasta_search/example_paired_seqs.fasta")
+      }
+    }
+    return (NULL)
+  })
+
+  
+  
+  ## After the user hit the search button
   observeEvent(input$search,{
     # Initialize everything:
     initialize_everything()
+    
+    # Update the tabset panel to the "Antibody information" when the user click on search:
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
+    updateTabsetPanel(session, "struc_seq_viewer",
+                      selected = "Structural_Viewer")
+    
+    # Show the buttons and select_column options when the user click the search && there are results in the ab_info$ab_info_df is not NULL:
+    
+    output$ab_info_buttons_ui <- renderUI({
+      tagList(
+        selectInput("file_col","Select the additional column(s) you want to display",
+                    choices=colnames(vcab)[!colnames(vcab) %in% c('X','iden_code','Htype','Ltype','Structural.Coverage')], 
+                    multiple=TRUE)%>%
+          helper(type="inline",title="Display additional columns",
+                content=c("For simplicity, some columns of the antibody table below are hidden",
+                            "By selecting the column names listed here, you can acquire the information in these columns",
+                            "Multiple columns can be selected at the same time")),
+        fluidRow(
+          column(4,
+                  downloadButton("download_subset",label="Download search results")
+          ),
+          column(8,
+                  checkboxInput(inputId = "if_download_pdb",label="Select this to download pdb files of VCAb entries (.zip)")%>%
+                    helper(type="inline",title="Download search results",
+                          content=c("The download file would be a zip file containing the antibody table listed here, and pdb files if you check the checkbox",
+                                    "pdb files downloaded contaning one Heavy-Light chain pair indicated in the iden_code would be downloaded",
+                                    "It might take some time if the table containing too many VCAb entries and you want to download the pdb files for each one of them"
+                          ))
+          )
+            
+        )
+      )
+    })
+      
+    if(tabs_value()=="Sequence"){
+      output$ui_further_filter_results <- renderUI({
+        tagList(
+          hr(),
+          fluidRow(
+            column(5,
+                   strong ("Filter the results by features:"),
+                   br(),br(),
+                   selectInput("flt_species","Species:",choices=c("All",unique(vcab$Species))) %>%
+                     helper(type="inline",title="Species",
+                            content=c("Species annotation for the antibody")),
+                   selectInput("flt_iso_txt","Isotype:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Htype,"\\("),function(x){x[1]}))))) %>%
+                     helper(type="inline",title="Isotype", 
+                            content=c("Any one of: IgA1, IgA2, IgD, IgE, IgG1, IgG2, IgG3, IgG4, IgM, other available isotypes in VCAb, or 'All' (i.e. any isotype). There are nine isotypes in human, classified by the sequence of C region on H chain.",
+                                      "Each isotype has different function.")),
+                   
+                   selectInput("flt_Ltype_txt","Light chain type:",choices=c("All",unique(unlist(lapply(strsplit(vcab$Ltype,"\\("),function(x){x[1]}))))) %>%
+                     helper(type="inline",title="Light chain type", 
+                            content=c("Any one of: kappa, lambda, or All (i.e. either kappa or lambda). There are two light chain types in human, classified by the sequence of C region on L chain.")),
+                   selectInput("flt_struc_cov","Structural Coverage:",choices=c("All",sort(unique(vcab$Structural.Coverage)))) %>%
+                     helper(type="inline", title="Structural Coverage",
+                            content=c("In VCAb, the structural coverage is classified as Fab and full antibody.",
+                                      "Full antibody covers both Fab and Fc region"))
+            ),
+            column(5, offset=2,
+                   
+                   selectInput("flt_if_antigen","If has antigen:",choices=c("Any","Yes","No")) %>%
+                     helper(type="inline",title="If has antigen",
+                            content=c("If the pdb file of this entry containing the antigen chain",
+                                      "Any: include the antibody no matter if the pdb file contains the antibody chain or not",
+                                      "Yes: only include the antibody if the pdb file contains the antibody chain",
+                                      "No: only include the antibody if the pdb file doesn't contain any antibody chain")),
+                   selectInput("flt_exp_method","Experimental Method:",choices=c("All",sort(unique(vcab$method))),multiple=FALSE,selected="All") %>%
+                     helper(type="inline",title="Experimental Method",
+                            content=c("The experimental method used to acquire the structure.")),
+                   numericInput("flt_res_cut","Resolution Threshold:",NULL,min=1,max=5) %>%
+                     helper(type="inline",title="Resolution Threshold",
+                            content=c("This is used to acquire structures with resolution below the threshold.",
+                                      "The threshold can be set to value from 1 to 5."))#,
+                   #actionButton("filter","Filter")
+                   # Just empty the input to allow the user to select ab without the limit of resolution.
+            )
+          )
+        )
+          
+      })
+    }
+    
+    
+    
+    
     # Do the actual job
     if (tabs_value() == "PDB"){
-      if(input$pdb_txt %in% pdbs){
-        o_df <- vcab %>% dplyr::filter(pdb==input$pdb_txt)
+      
+      inputted_pdb<- tolower(input$pdb_txt)
+      if(inputted_pdb %in% pdbs){
+        o_df <- vcab %>% dplyr::filter(pdb==inputted_pdb)
         final_df <- addShow(o_df,ns)
         ab_info$ab_info_df <- final_df
         ab_info$chain_type_message <- NULL
@@ -834,7 +1891,7 @@ server <- function(input,output,session){
     else if (tabs_value() == "Features"){
       #o_df <- vcab[select_filter("Htype",iso_txt)&select_filter("Ltype",Ltype_txt)&select_filter("Structural.Coverage",struc_cov)&select_filter("method",exp_method),]
       #o_df <- if (is.na(res_cut)) o_df else o_df[o_df$resolution <= res_cut,] # Keep entries with resolution smaller than the threshold, if the res_cut is inputted.
-      o_df <- vcab[filter_the_rows(input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut,input$if_antigen),]
+      o_df <- vcab[filter_the_rows(input$species,input$iso_txt,input$Ltype_txt,input$struc_cov,input$exp_method,input$res_cut,input$if_antigen),]
       rownames(o_df) <- NULL # reset the index
       
       final_df <- addShow(o_df,ns)
@@ -844,7 +1901,7 @@ server <- function(input,output,session){
     else if (tabs_value() == "Sequence"){
       
       ### Identify if the user upload the fasta file ###
-      if (is.null(input$upload)){
+      if (is.null(total_up_fasta())){
         ## IF the user didn't upload the file, 
         ## Display chain type message, the table containing ab_info & blast_result
         
@@ -858,11 +1915,12 @@ server <- function(input,output,session){
           }
           else{
             type_title <- bl_result[1,1]
-            type <- tail(strsplit(type_title,"\\|")[[1]],n=1)
+            #type <- tail(strsplit(type_title,"\\|")[[1]],n=1)
+            type <- type_title
             
             if(seq_type=="unknown_seq"){
-              Hnames <- c("IGHG1_HUMAN","IGHG2_HUMAN","IGHG3_HUMAN","IGHG4_HUMAN","IGHM_HUMAN","IGHA1_HUMAN","IGHA2_HUMAN","IGHD_HUMAN","IGHE_HUMAN")
-              if (type %in% Hnames){
+              
+              if (substr(type,1,3) == "IGH"){
                 return ("This chain is likely to be a H chain. Please select the 'Heavy chain' option under the sequence box for further identification.")
               }
               else{
@@ -876,6 +1934,187 @@ server <- function(input,output,session){
           }
           
         }
+        ##### NUMBER ANTIBODY SEQUENCE: store the information of the numbering plot #######
+        usr_num_info_1 <- reactiveValues(presented=NULL,original=NULL,attached=NULL) # The info for the first sequence
+        usr_num_info_2 <- reactiveValues(presented=NULL,original=NULL,attached=NULL) # The info for the second sequence
+        # store the plots of the numbering for usr_inputted sequence
+        # presented: ggplot_obj:the numbering shown in current plot; 
+        # original: ggplot_obj:the original numbering for the usr_inputted seq (without the usr_selected Ab C sequence);
+        # attached: Dataframe:the C numbering for the usr_selected Ab entry, assign the value only when the user select V region for analysis
+        
+        ##### NUMBER ANTIBODY SEQUENCE: Calculate the numbering for the first sequence #######
+        seq1_info <- check_usr_inputted_seq(input$seq_txt)
+        seq1_seq <- seq1_info$seq
+        seq1_title <- paste0(seq1_info$title,input$seq_type)
+        o_num_plot_usr_seq_1 <- vcab_number_usr_input_seq(seq1_seq,input$sele_bl_db,hmmerpath)
+        usr_num_info_1$original <- o_num_plot_usr_seq_1
+        usr_num_info_1$presented <- usr_num_info_1$original
+        
+        output$ui_num_plot_usr1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
+          tagList(
+            p(HTML(paste0("<b>Numbering the user inputted sequence (IMGT scheme): </b><br/>",
+                   "Hover on the residues to show the detailed numbering information <br/>",
+                   "<b>",ifelse(input$seq_type=="Hseq","Heavy chain:","Light chain:"), "</b><br/>")
+                   )),
+            plotOutput("num_plot_usr1",width="560px",height="400px",
+                       hover=hoverOpts("num_hover_seq1",delay=100,delayType="debounce",nullOutside=FALSE)
+                       )
+            
+          )
+          
+        })
+        output$num_plot_usr1 <- renderPlot({
+          usr_num_info_1$presented
+        })
+        output$ui_num_info_seq1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
+          hover <- input$num_hover_seq1
+          num_df <- usr_num_info_1$presented$data
+          plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
+          plotData <- plotData[complete.cases(plotData),]
+          point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+          if (nrow(point) == 0) return(NULL)
+          if (point$res_code=="-") return(NULL)
+          
+          fluidRow(
+            style="height:70px",
+            
+            p(HTML(paste0("<b>",ifelse(input$seq_type=="Hseq","Heavy chain","Light chain"), "</b><br/>",
+                          "<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                          "<b> Residue: </b>", point$res_code, "<br/>",
+                          "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
+                          "<b> Fragment: </b>", point$region, "<br/>")))
+            
+           
+          )
+        })
+        
+        ##### ------ #####
+        
+        ##### ADD USR_SELECTED C SEQUENCE TO THE V REGION, if the usr select "V region" for the "select the region of your interest" #####
+        if (input$sele_bl_db=="v_region" && is.null(o_num_plot_usr_seq_1)==FALSE){
+          output$ui_append_c_seq <- renderUI({
+            tagList(
+              p(HTML(paste0(
+                "<b> VCAb structure matches are found under the \"Antibody Information\" panel. Please select an entry (by clicking the row of the table).
+                
+                </b></br>",
+                "Antibody you selected:"
+              ))),
+              
+              wellPanel(
+                p(HTML(ifelse(is.null(input$ab_info_table_rows_selected),"",struc_selected())))
+              ),
+              if (is.null(input$ab_info_table_rows_selected)==FALSE){
+                tagList(
+                  actionButton("append_c_seq", "Click to append C sequence of selected structure to the query V sequence"),
+                  actionButton("clear_c_seq", "Clear the appended C sequence")
+                )
+                
+              }
+              
+            )
+            
+          })
+          
+          # ASSIGN THE ATTACHED INFO HERE:
+          observeEvent(input$append_c_seq ,{
+            usr_num_info_1$attached <- get_usr_selected_cnum(struc_selected(),input$seq_type)
+            o_num_df1 <- usr_num_info_1$original$data
+            a_num_df1 <- usr_num_info_1$attached
+            
+            current_num_df1 <- rbind(o_num_df1,a_num_df1)
+            
+            usr_num_info_1$presented <- get_numbering_plot(current_num_df1)
+            
+            usr_num_info_2$attached <- get_usr_selected_cnum(struc_selected(),input$seq_type_2)
+            o_num_df2 <- usr_num_info_2$original$data
+            a_num_df2 <- usr_num_info_2$attached
+            
+            current_num_df2 <- rbind(o_num_df2,a_num_df2)
+            
+            usr_num_info_2$presented <- get_numbering_plot(current_num_df2)
+            
+            
+          })
+          # CLEAR THE ATTACHED INFO HERE:
+          toListen <- reactive({
+            input$clear_c_seq | is.null(input$ab_info_table_rows_selected)
+          })
+          observeEvent(toListen(),{
+            usr_num_info_1$attached <- NULL
+            usr_num_info_2$attached <- NULL
+            usr_num_info_1$presented <- usr_num_info_1$original
+            usr_num_info_2$presented <- usr_num_info_2$original
+            
+          })
+          
+          
+          
+        }
+        ##### ------ #####
+        
+        ##### Make the numbered usr_seq available to download #######
+        usr_seq2_info <- reactiveValues(seq2_info=NULL) # stores seq_info like title and sequences
+        output$ui_download_num_usr_seq <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
+          tagList(
+            br(),
+            downloadButton("download_num_usr_seq",label="Download numbered sequence")#,
+            #p(HTML(paste0(
+            #  "<b> Hover on the residues in the plot on the left to show residue numbering information:<b/> <br/>"
+            #)))
+          )
+        })
+        output$download_num_usr_seq <- downloadHandler(
+          filename=function(){
+            title <- ifelse(is.null(usr_seq2_info$seq2_info$seq),paste0(seq1_info$title,"_",input$seq_type),
+                            ifelse(seq1_info$title==usr_seq2_info$seq2_info$title,seq1_info$title,paste0(seq1_info$title,"_",usr_seq2_info$seq2_info$title)))
+            paste0(title,"_sequence_numbering_info",".zip")
+          },
+          content=function(f_name){
+            seq_name <- paste0(seq1_info$title,"_",input$seq_type)
+            num_df <- usr_num_info_1$presented$data
+            
+            temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+	    dir.create(temp_directory)
+            
+            num_info=extract_seq_from_num_df(num_df,seq_name)
+            pure_num_df=num_info$num_df
+            pure_num_df_name <-paste0(seq_name,"_num_info.csv")
+            fasta_name <- paste0(seq_name,"_seq_with_gaps.fasta")
+            
+            write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
+            write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
+            if (is.null(usr_seq2_info$seq2_info$seq)==FALSE){
+              seq2_info <- usr_num_info_2$presented$seq2_info
+              seq2_name <- paste0(seq2_info$title,"_",input$seq_type_2)
+              num_df_2 <- o_num_plot_usr_seq_2$data
+              
+              num_info_2=extract_seq_from_num_df(num_df_2,seq2_name)
+              pure_num_df_2=num_info_2$num_df
+              pure_num_df_name_2 <-paste0(seq2_name,"_num_info.csv")
+              fasta_name_2 <- paste0(seq2_name,"_seq_with_gaps.fasta")
+              
+              write.csv(pure_num_df_2,file.path(temp_directory,pure_num_df_name_2))
+              write.fasta(num_info_2$seqs,num_info_2$titles,file.path(temp_directory,fasta_name_2))
+            }
+            
+            zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+            
+          },
+          contentType="application/zip"
+        )
+        ##### ------ #####
+        
+        
         
         ## Check if the user choose to input two chains ##
         if (two_chains()==1){
@@ -908,8 +2147,62 @@ server <- function(input,output,session){
                                   "When sequences for both chains of the antibody is inputted, the chain types selected must be exactly one H and one L chain."))
           }
           
+          ##### NUMBER ANTIBODY SEQUENCE: Number the second usr_sequence: #######
+          seq2_info <- check_usr_inputted_seq(input$seq_txt_2)
+          usr_seq2_info$seq2_info <- seq2_info
+          seq2_seq <- seq2_info$seq
+          seq2_title <- paste0(seq2_info$title,input$seq_type_2)
+          o_num_plot_usr_seq_2 <- vcab_number_usr_input_seq(seq2_seq,input$sele_bl_db,hmmerpath)
+          
+          usr_num_info_2$original <- o_num_plot_usr_seq_2
+          usr_num_info_2$presented <- usr_num_info_2$original
+          
+          output$ui_num_plot_usr2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
+            tagList(
+              p(HTML(paste0(
+                "<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain:","Light chain:"), "</b><br/>"
+              ))),
+              plotOutput("num_plot_usr2",width="560px",height="400px",
+                         hover=hoverOpts("num_hover_seq2",delay=100,delayType="debounce",nullOutside=FALSE)
+              )
+            )
+            
+          })
+          output$num_plot_usr2 <- renderPlot({
+            usr_num_info_2$presented
+          })
+          output$ui_num_info_seq2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
+            hover <- input$num_hover_seq2
+            num_df <- usr_num_info_2$presented$data
+            
+            plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
+            plotData <- plotData[complete.cases(plotData),]
+            point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+            if (nrow(point) == 0) return(NULL)
+            if (point$res_code=="-") return(NULL)
+            
+            fluidRow(
+              style="height:70px",
+              
+              p(HTML(paste0("<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain","Light chain"), "</b><br/>",
+                            "<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                            "<b> Residue: </b>", point$res_code, "<br/>",
+                            "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
+                            "<b> Fragment: </b>", point$region, "<br/>")))
+              
+            )
+          })
+          ##### ------ #####
+          
         }
         else{
+          
           # If there is only one chain inputted by the user
           
           # Find out which db should be used for blast:
@@ -919,33 +2212,41 @@ server <- function(input,output,session){
           blast_f_db <- ifelse(input$seq_type == "Hseq",VCAbH_bl,ifelse(input$seq_type == "Lseq",VCAbL_bl,all_ref_bl)) # the full_seq db
           blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
           
+          this_seq <- input$seq_txt
+	  
           # BLAST:
-          blast_df <- generate_blast_result(input$seq_txt,blast_db_dir) # return the dataframe of the complete result of the blast
+          blast_df <- generate_blast_result(this_seq,blast_db_dir) # return the dataframe of the complete result of the blast
+
           if (is.null(blast_df)==FALSE){
-            VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+            #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+            VCAb_blast_df <- blast_df
             
             # To observe if the user choose the correct chain type
             if(input$seq_type != "unknown_seq"){
-              top_blast_ident <- VCAb_blast_df[1,"Perc.Ident"]
+              top_blast_ident <- VCAb_blast_df[1,"pident"]
               if (top_blast_ident<50){
                 showModal(modalDialog(title="Are you sure you select the correct chain type?", "The Perc. Ident for the top hits are too low, 
                                       you might want to use the 'Don't know' option to further confirm the chain type of this sequence."))
               }
-              }
+            }
             
             # Record the order of the blast result
             VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
-            
             bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
-            
-            new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+	    new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
             rownames(new_bl_ab_df) <- NULL
             new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
             
             ab_info$ab_info_df <- new_bl_ab_df
             #ab_info$ab_info_df <- VCAb_blast_df
-            ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
+            if (input$sele_bl_db=="v_region"){
+              ab_info$chain_type_message <- "The top ten entries in VCAb which are the most similar to the input sequence are shown below."
             }
+            else{
+              ab_info$chain_type_message <- chain_type_mess(input$seq_txt,input$seq_type)
+            }
+            
+          }
           
           
           
@@ -957,8 +2258,8 @@ server <- function(input,output,session){
         # IF the user upload the file, 
         # only display the table containing ab_info & blast_result, without the chain type message.
         
-        uploaded <- input$upload
-        uploaded_path <- check_uploaded_file(uploaded$datapath) # check if the uploaded file is a fasta file containing 200 seqs max.
+        uploaded <- total_up_fasta()
+        uploaded_path <- check_uploaded_file(uploaded) # check if the uploaded file is a fasta file containing 200 seqs max.
         
         # Check if the uploaded file is a fasta file containing 200 seqs max.
         if (is.null(uploaded_path)){
@@ -974,7 +2275,12 @@ server <- function(input,output,session){
             pair_info <- uploaded_file_blast_paired(uploaded_path,input$sele_bl_db)
             unpaired <- pair_info$unpaired # allow the user to download this table later
             paired_bl <- pair_info$paired_bl
-            paired_bl_ab <- generate_total_info(paired_bl,ns)
+            if (is.null(paired_bl)){
+              paired_bl_ab <- NULL
+            } else{
+              paired_bl_ab <- generate_total_info(paired_bl,ns)
+            }
+            
             
             ab_info$ab_info_df <- paired_bl_ab
             ab_info$unpaired <- unpaired
@@ -1004,11 +2310,88 @@ server <- function(input,output,session){
       }
       else{
         dm_dir="../ch1_cl_interface_matrix/dm_of_interface_dist_mtrx.csv"
-        dm_df=read.csv(dm_dir)
+        dm_df=readr::read_csv(dm_dir,col_select=c("...1",iden_code),show_col_types = FALSE)
+        #dm_df=read.csv(dm_dir)
         interface_info <- get_similar_interface(iden_code,dm_df)
         total_table <- generate_total_info(interface_info,ns)
         ab_info$ab_info_df <- total_table
       }
+      
+      
+      
+    }
+    else if (tabs_value()=="Repertoire"){
+      if ((is.null(repertoire$table)==FALSE)){
+        # Get the information of the selected repertoire sequence
+        reper_row_num <- reactive(input$repertoire_table_rows_selected)
+        
+        if (input$reper_search_mode=="paired"){
+          # if the searching mode is paired
+          reper_selected_info <- get_paired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$cell_id_col,repertoire$seq_col,repertoire$chainType_col)
+          if (is.null(reper_selected_info)==FALSE){
+            row_selected<-c(reper_selected_info$h_row_num,reper_selected_info$l_row_num)
+            repertoire$row_selected <- row_selected[! row_selected %in% reper_row_num()]
+            #print (repertoire$row_selected)
+            t_df <- blast_paired_chains(reper_selected_info$cell_id,reper_selected_info$h_seq,reper_selected_info$l_seq,"v_region",check_seq=FALSE) # the total blast table for VH&VL sequence
+            bl_df <- t_df
+            
+            bl_ab_df <- generate_total_info(bl_df,ns)
+            new_bl_ab_df <- bl_ab_df[!(names(bl_ab_df) %in% c("avg_ident"))] # drop the column of "avg_ident"
+            
+            ab_info$ab_info_df <- new_bl_ab_df
+          }
+          else{
+            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The sequence you selected has no/multiple matched sequence paired with the one you selected, or the entry you selected containing unvalid protein sequence.
+                                  Please: <br>
+                                  <b> 1. try to select another entry in the repertoire; or you haven't select any entry in the repertoire table <br> </b>
+                                  the entry you selected is probably unpaired, or has multiple paired heavy or light chain.<br>
+                                  <b> 2. Check if the uploaded repertoire contains the paired heavy-light chain sequence
+                                  (If not, please choose the Unpaired mode) <br>
+                                  3. If you are under the Customized searching mode, check if you select </b>
+                                  <br> a) the correct column holding the cell_ID/barcode;
+                                  <br> b) the correct column holding valid protein sequence; AND
+                                  <br> c) the correct column indicating if the chain is heavy or light chain
+                                  (note: the chain must contain only the value of IGH, IGK, or IGL)")))
+          }
+        }
+        else{
+          # if the searching mode is unpaired
+          reper_selected_info <- get_unpaired_repertoire_seq(repertoire$table,reper_row_num(),repertoire$seq_col,repertoire$chainType_col)
+          if (reper_selected_info$seq %in% c("","NA","NULL","NaN","nan","na","null") || is.na(reper_selected_info$seq) || is.null(reper_selected_info$seq) ){
+            showModal(modalDialog(title="Check the selected repertoire sequence", HTML("The entry you selected has no valid sequence,
+                                  Please: <br>
+                                  <b> 1. try another entry in the repertoire; or you haven't select any entry in the repertoire table <br>
+                                  2. If you are under the Customized searching mode, check if you select </b>
+                                  <br> a) the correct column holding valid protein sequence; and
+                                  <br> b) the correct column indicating if the chain is heavy or light chain
+                                  (note: the chain must contain only the value of IGH, IGK, or IGL)")))
+          } else {
+            blast_db_dir <- ifelse(reper_selected_info$chainType=="H", HV_bl, LV_bl)
+            #blast_db_dir <- HV_bl
+            
+            blast_df <- generate_blast_result(reper_selected_info$seq,blast_db_dir,check_seq=FALSE) # return the dataframe of the complete result of the blast
+            if (is.null(blast_df)==FALSE){
+              #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
+              VCAb_blast_df <- blast_df
+              
+              # Record the order of the blast result
+              VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
+              
+              bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
+              
+              new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+              rownames(new_bl_ab_df) <- NULL
+              new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
+              
+              ab_info$ab_info_df <- new_bl_ab_df
+            
+          }
+        }
+        
+        
+        
+        
+        }}
       
       
       
@@ -1028,6 +2411,248 @@ server <- function(input,output,session){
     }
     
   })
+  
+  # To upload repertoire file:
+  output$ui_reper_uploaded <- renderUI({
+    input$clear_reper_file
+    fileInput("up_repertoire",
+              label="Upload repertoire table",
+              accept=c("txt/csv", "text/comma-separated-values,text/plain", ".csv"))
+    
+  })
+  
+  
+  # Record the uploaded file state for the Repertoire panel
+  repertoire <- reactiveValues(path=NULL,table=NULL,cell_id_col=NULL,seq_col=NULL,chainType_col=NULL,row_selected=NULL)
+  query_state <- reactiveValues(state=NULL)
+  observe({                    
+    if (input$reper_file!=""){
+      query_state$state <- 'uploaded'
+    }
+    else if ("reper_file" %in% names(getQueryString())){
+      query_state$state <- 'uploaded'
+    }
+    else{
+      query_state$state <- NULL
+    }
+  })
+  observeEvent(input$clear_reper_file,{
+    query_state$state <- NULL
+  })
+  
+  uploaded_repertoire_file_state <- reactiveValues(state=NULL) # Store the state of uploaded repertoire file
+  observeEvent(input$up_repertoire,{
+    uploaded_repertoire_file_state$state <- 'uploaded'
+  })
+  
+  
+  observeEvent(input$clear_reper_file,{
+    uploaded_repertoire_file_state$state <- NULL
+    updateTextInput(session, "reper_file", value = "")
+    #print ("2226")
+    remove_query_string(session,mode = "push")
+    #input$ex_cus_reper_file <- NULL
+    repertoire$table <- NULL
+    ab_info$ab_info_df <- NULL
+  })
+  # Set the state for example files
+  example_reper_state <- reactiveValues(cus=NULL,airr=NULL,cranger=NULL)
+  observeEvent(input$ex_airr_reper_file,{example_reper_state$airr <- "uploaded"})
+  observeEvent(input$ex_cranger_reper_file,{example_reper_state$cranger <- "uploaded"})
+  observeEvent(input$ex_cus_reper_file,{
+    example_reper_state$cus <- "uploaded"
+    updateRadioButtons(session,"reper_search_mode",selected="unpaired")
+    })
+  observeEvent(input$clear_reper_file,{
+    example_reper_state$cus <- NULL
+    example_reper_state$airr <- NULL
+    example_reper_state$cranger <- NULL
+    updateRadioButtons(session,"reper_search_mode",selected="unpaired")
+    output$ui_repertoire_customized_cell_id <- renderUI({NULL})
+    output$ui_repertoire_customized <- renderUI({NULL})
+    })
+  # Return the value for the path of the uploaded file/url/example_files
+  total_repertoire_file_state <- reactive({
+    if (!(is.null(uploaded_repertoire_file_state$state))){
+      return (input$up_repertoire$datapath)
+    }
+    if (!(is.null(query_state$state))){
+      return (getQueryString()[["reper_file"]])
+    }
+    
+    #  only load example file when no repertoire file/link is uploaded
+    if (is.null(uploaded_repertoire_file_state$state) && is.null(query_state$state)){
+      if (!(is.null(example_reper_state$cus)) && !(is.null(input$ex_cus_reper_file)) && input$ex_cus_reper_file>0){
+        #updateSelectInput(session,"repertoire_seq_col",selected=c("AA_seq"))
+        updateRadioButtons(session,"reper_format",selected="customized")
+        return ("example_repertoire/sample_repertoire.txt")
+      }
+      if (!(is.null(example_reper_state$airr)) && !(is.null(input$ex_airr_reper_file)) && input$ex_airr_reper_file>0){
+        updateRadioButtons(session,"reper_format",selected="airr")
+        return ("example_repertoire/King_BCP003_vquest_airr.tsv")
+      }
+      if (!(is.null(example_reper_state$cranger)) && !(is.null(input$ex_cranger_reper_file)) && input$ex_cranger_reper_file>0){
+        updateRadioButtons(session,"reper_format",selected="cell_ranger")
+        return ("example_repertoire/MathewEtAl_Sample11_filtered_contig_annotations.csv")
+      }
+      
+    }
+    
+    return (NULL)
+    
+  })
+  
+  # Update the query string based on the user-inputted url
+  observe({
+    js$encode_url(input$reper_file)
+  })
+  observeEvent(input$reper_url,{
+    if (!(is.null(input$encoded_url))){
+      
+      #new_str=paste0("?reper_file=",input$reper_file)
+      new_str=paste0("?reper_file=",input$encoded_url)
+      updateQueryString(new_str,mode="push")
+      
+    }
+    else{
+      remove_query_string(session,mode = "push")
+    }
+  })
+  
+  observe({
+      # Read the repertoire table:
+      if (is.null(total_repertoire_file_state())==FALSE){
+        repertoire$path<-total_repertoire_file_state()
+        
+        if (input$reper_format=="airr"){
+          reper_table <- airr::read_alignment(repertoire$path)
+          if(any(is.na(reper_table[["cell_id"]]))){
+            reper_table[,"cell_id"] <- apply(reper_table[,"sequence_id"],1,function(x){strsplit(x,"_")[[1]][1]})
+          }
+          reper_table <- as.data.frame(reper_table)
+          output$ui_repertoire_customized_cell_id <- renderUI({NULL})
+          output$ui_repertoire_customized <- renderUI({NULL})
+          
+          repertoire$cell_id_col="cell_id"
+          repertoire$seq_col=c("sequence_alignment_aa")
+          repertoire$chainType_col="locus"
+          
+        }
+        else if (input$reper_format=="cell_ranger"){
+          reper_table <- read.csv(repertoire$path,row.names = NULL)
+          
+          output$ui_repertoire_customized_cell_id <- renderUI({NULL})
+          output$ui_repertoire_customized <- renderUI({NULL})
+          repertoire$cell_id_col="barcode"
+          repertoire$seq_col=c("fwr1","cdr1","fwr2","cdr2","fwr3","cdr3","fwr4")
+          repertoire$chainType_col="chain"
+        }
+        else if (input$reper_format=="customized"){
+          reper_table <- as.data.frame(data.table::fread(repertoire$path,header=TRUE))
+          output$ui_repertoire_customized <- renderUI({
+            tagList(
+              selectInput(ns("repertoire_seq_col"),
+                          label=helper(shiny_tag = "Choose column(s) holding amino acid sequences: ", colour = "royalblue2",
+                                       type="inline",title="Select column(s) holding protein sequence",
+                                       content=HTML("You can choose one or multiple column(s) holding amino acid sequence here.<br><br>
+                                                  If multiple columns are choosen, the program will automatically concatenate sequence fragments in these columns into
+                                                  one sequence, and use this sequence for BLAST.<br>
+                                                  This is useful if in the repertoire file, sequences are truncated into fragments of frameworks and CDRs, or fragments of V and C regions.<br>
+                                                  <b> Note: when multiple columns are selected, the concatenation of fragments depends on the order of the column names
+                                                  you inputed.</b>
+                                                 ")),
+                          choices=colnames(reper_table),multiple=TRUE),
+              selectInput(ns("repertoire_chainType_col"),
+                          label=helper(shiny_tag="Choose column indicating the identity of the chain (IGH/IGK/IGL)", colour = "royalblue2",
+                                       type="inline",title="Select column(s) indicating the chain type (H or L)",
+                                       content=HTML("<b>Under unpaired searching mode: </b><br>
+                                                    The value of the selected column must contain the string \"IGH\",\"IGL\", or \"IGK\"<br><br>
+                                                    <b>Under paired searching mode: </b><br>
+                                                    The value of the selected column must be <b>EXACTLY</b> \"IGH\",\"IGL\", or \"IGK\"")),
+                          
+                          choices=colnames(reper_table))
+            )
+            
+          })
+          
+          if (input$reper_search_mode=="paired"){
+            output$ui_repertoire_customized_cell_id <- renderUI({
+              tagList(
+                selectInput("repertoire_cell_id_col","Choose column indicating cell_id/barcode",
+                            choices=colnames(reper_table))
+              )
+              
+              
+            })
+          }else{
+            output$ui_repertoire_customized_cell_id <- renderUI({NULL})
+          }
+          
+          
+          observeEvent(input$repertoire_cell_id_col,{
+            repertoire$cell_id_col<-input$repertoire_cell_id_col
+          })
+          observeEvent(input$repertoire_seq_col,{
+            repertoire$seq_col=input$repertoire_seq_col
+          })
+          observeEvent(input$repertoire_chainType_col,{
+            repertoire$chainType_col=input$repertoire_chainType_col
+          })
+          # update the selectInput when example file is loaded
+          observeEvent(input$ex_cus_reper_file,{
+            updateSelectInput(session,"repertoire_seq_col",selected=c("AA_seq"))
+            updateSelectInput(session,"repertoire_chainType_col",selected="locus")
+          })
+          observeEvent(input$clear_reper_file,{
+            updateSelectInput(session,ns("repertoire_seq_col"))
+            updateSelectInput(session,ns("repertoire_chainType_col"))
+          })
+          
+        }
+        else{
+          reper_table <- NULL
+        }
+        
+        repertoire$table <- reper_table
+        #horl_locus <- isolate(repertoire$table[[repertoire$chainType_col]])
+        #if(!(all(horl_locus %in% c("IGH","IGK","IGL")))){
+        #  showModal(modalDialog(title="Choose the correct column", 
+        #                        "Please choose the correct column indicating the chain type of the sequence (H or L) \n
+        #                        all the value in this column must be one of these: IGH, IGK, or IGL"))
+        #  repertoire$table <- NULL
+        #}
+      
+    }
+    
+      
+      
+      
+    #}
+    
+    if (is.null(repertoire$table)==FALSE){
+      #  observeEvent(input$repertoire_table_rows_selected,{
+      
+      #  })
+      #color_by_row <-rownames(repertoire$table)
+      
+      #color_value <- ifelse(color_by_row %in% repertoire$row_selected,"blue","") 
+      #color_value <- ifelse(color_by_row == "AAGGAGCAGTCTCGGC-1_contig_1","orange","")
+      output$repertoire_table <- DT::renderDataTable({
+        DT::datatable(repertoire$table,selection="single",escape=F,
+                      options=list(scrollX = TRUE)) #%>%
+        #formatStyle(0,target="row",backgroundColor = styleEqual(NULL,"orange"))
+        #formatStyle(0,target="row",backgroundColor = styleEqual(color_by_row,color_value))
+        #`if`(!(is.null(repertoire$row_selected)),formatStyle(0,target="row",backgroundColor = styleEqual(repertoire$row_selected,"orange")),.)
+        
+        #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
+      })
+      
+      
+    }
+    
+    
+  })
+  
   
   # Make the ab_info_df downloadable for users
   
@@ -1079,63 +2704,81 @@ server <- function(input,output,session){
   
   file_col_idx <- reactive({
     if (tabs_value()=="PDB" | tabs_value()=="Features"){
-      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c('iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
-    else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired")){
-      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+    else if ((seq_sub_tab_value()=="Search individual sequence" & two_chains()==1)| (seq_sub_tab_value()=="Search in batch" & input$up_paired=="paired") | (tabs_value()=="Repertoire" & input$reper_search_mode=="paired") ){
+      return (names(ab_info$ab_info_df) %in% c(two_bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
       #return (names(ab_info$ab_info_df))
     }
     else if (tabs_value()=="CH1-CL Interface"){
-      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c("interface<br>difference<br>index",'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
     else {
-      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',stringr::str_replace_all(input$file_col,"\\.","<br>")))
+      return (names(ab_info$ab_info_df) %in% c(bl_col,'iden_code','Structure','Htype','Ltype','Structural<br>Coverage',"Species",stringr::str_replace_all(input$file_col,"\\.","<br>")))
     }
   })
   
   # Filter the rows based on the user input
-  file_row_idx <- function(df){
-    reactive({
-      if (tabs_value()=="Sequence"){
-        return (filter_the_rows(input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,df))
-      }
-      else{
-        return (TRUE)
-      }
-    })
-  }
+  file_row_idx <- reactive({
+    if (tabs_value()=="Sequence"){
+      return (filter_the_rows(input$flt_species,input$flt_iso_txt,input$flt_Ltype_txt,input$flt_struc_cov,input$flt_exp_method,input$flt_res_cut,input$flt_if_antigen,ab_info$ab_info_df))
+      
+    }
+    else{
+      return (TRUE)
+    }
+  })
   
   
-  
-  
+  displayed_table_rows <-reactiveValues(df=NULL)
+  observe({
+    displayed_table_rows$df <- ab_info$ab_info_df[file_row_idx(),]
+  })
   
   
   
   # Show the information
   output$chain_type_message <- renderText({ab_info$chain_type_message})
   output$ab_info_table <- DT::renderDataTable({
-    DT::datatable(ab_info$ab_info_df[file_row_idx(ab_info$ab_info_df)(),file_col_idx()],selection="single",escape=F, 
+    DT::datatable(displayed_table_rows$df[,file_col_idx()],selection="single",escape=F, 
                   options=list(scrollX = TRUE))
     #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
   })
   
   # Display the message if there are unpaired seq in the fasta file
-  unpair_mess <- reactive({if (is.null(ab_info$unpaired)) "" else "Unpaired sequences identified in the fasta file:"})
+  unpair_mess <- reactive({if (is.null(ab_info$unpaired)) "" else "<br> <b> Note: Under the paired searching mode, only the paired sequence will be searched.
+                                                                   <br> The fasta title for the paired H-L sequence must be in this format:AbName-HorLLabel (Please check the example file)
+                                                                   <br>
+                                                                  <br> Unpaired sequences identified in the fasta file: </b>"})
   
-  output$unpair_message <- renderText({unpair_mess()})
+  output$ui_unpair_message <- renderUI({
+      HTML(unpair_mess())
+  })
+  observe({
+    if (!(is.null(ab_info$unpaired))){
+      hide("ab_info_buttons_ui")
+      hide("ui_further_filter_results")
+    }else{
+      show("ab_info_buttons_ui")
+      show("ui_further_filter_results")
+    }
+  })
+  #output$unpair_message <- renderText({HTML(unpair_mess())})
   output$unpaired_table <- DT::renderDataTable({
     DT::datatable(ab_info$unpaired,selection="none",options=list(scrollX = TRUE))
   })
   
   
   
-  ### THE PANEL of POPSComp table ##################################################################################################
+  ### THE PANEL of Interface information POPSComp table ##################################################################################################
+  
+  ###### TABPANEL: POPSCOMP table ######
   
   struc_selected <- eventReactive(input$ab_info_table_rows_selected, {
     # return the "id" of the structure selected by the user in the following format: H(type)L(type)_pdb_HL
     # IMPORTANT: this format might be changed if I decided to use a different format for the PDB file
     selectedRow <- as.numeric(input$ab_info_table_rows_selected)
-    Ab_info_df <- ab_info$ab_info_df
+    Ab_info_df <- displayed_table_rows$df
     pdb_c <- Ab_info_df[selectedRow,'iden_code']
     return (pdb_c)
   })
@@ -1232,13 +2875,611 @@ server <- function(input,output,session){
     disulfide_proxy %>% selectRows(NULL)
   })
   
+  ###### ONLY ENABLE THE "Fab H-L contact map", "Disulfide Bond" AND "H-L interface residues" TAB WHEN THE USER SELECT A STRUCTURE ######
+  observe({
+    if (is.null(input$ab_info_table_rows_selected)){
+      js$disableTab("Fab_H-L_contact_map")
+      js$disableTab("H-L_interface_residues")
+      js$disableTab("Disulfide_Bond")
+      js$disableTab("Structural_Viewer")
+      js$disableTab("Sequence_Coverage")
+      js$disableTab("Sequence_numbering")
+      js$disableTab("pmut_scan")
+      
+    }
+    else{
+      if (file.exists(paste0(res_info_dir,struc_selected(),"_H_res_info.csv")) && file.exists(paste0(res_info_dir,struc_selected(),"_L_res_info.csv"))){
+        js$enableTab("Fab_H-L_contact_map")
+        js$enableTab("Sequence_numbering")
+        
+      }
+      
+      
+      js$enableTab("H-L_interface_residues")
+      js$enableTab("Disulfide_Bond")
+      js$enableTab("Structural_Viewer")
+      js$enableTab("Sequence_Coverage")
+      
+      js$enableTab("pmut_scan")
+      
+      
+      
+    }
+  })
+  
+  
+  
+  ###### TABPANEL: Show Fab contact matrix ######
+  if_hide_non_interface <- reactive({ifelse(is.null(input$hide_non_interface),0,input$hide_non_interface)})
+  
+  # Store the brushed residue information into reactive values
+  brushed_all_residues <- reactiveValues(all=NULL)
+  brushed_int_residues <- reactiveValues(h=NULL,y=NULL)
+  total_residues_info <- reactiveValues(df=NULL)
+  #brushed_df <- reactiveValues(df=NULL)
+  # Clear the brushed area when the user click the button
+  observeEvent(input$clearBrush, {
+    session$resetBrush("matrix_brush")
+  })
+  
+  observe({
+    iden_code<- struc_selected()
+    if(if_hide_non_interface()==1){
+      int_matrix_plot0<-plot_interface_mtrix(iden_code,mtrix_dir,res_info_dir,"if_both_interface")
+    }
+    else {
+      int_matrix_plot0<-plot_interface_mtrix(iden_code,mtrix_dir,res_info_dir,NULL)
+    }
+    
+    output$int_matrix_plot <- renderPlot({
+      int_matrix_plot0
+    })
+    plotData <- int_matrix_plot0$data
+    # set the interactive "box" on the plot
+    output$matrix_hover_info <- renderUI({
+      if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv"))==FALSE || file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))==FALSE){
+        return (NULL)
+      }
+      
+      hover <- input$matrix_hover
+      #plotData <- int_matrix_plot0$data
+      point <- nearPoints(plotData,hover, xvar="hid",yvar="lid",maxpoints = 1, threshold = 10,addDist = TRUE)
+      if (nrow(point) == 0) return(fluidRow(style="height:70px",column(12,p(HTML("<b>Hover to show residue numbering information </b><br/><br/>")))))
+      if (if_hide_non_interface()==1&&(point$if_both_interface==0)) return(fluidRow(style="height:70px",column(12,p(HTML("<b>Hover to show residue numbering information </b><br/><br/>")))))
+      
+      interface_residues <- get_res_info_in_matrix(iden_code,as.character(point$hid),as.character(point$lid),res_info_dir)
+      h_res=interface_residues$hres
+      l_res=interface_residues$lres
+      h_pdb=interface_residues$hpdb
+      l_pdb=interface_residues$lpdb
+      
+      
+      fluidRow(
+        style="height:70px",
+        column(6,
+               p(HTML(paste0("<b> H residue: </b>", h_res," ",h_pdb, "<br/>",
+                             "<b> IMGT numbering (H): </b>", as.character(point$hid), "<br/>",
+                             "<b> If both residues are involved in interface: </b>", ifelse(point$if_both_interface==1,"Yes","No"), "<br/>"
+               )))
+        ),
+        column(6,
+               p(HTML(paste0(
+                 "<b> L residue: </b>", l_res," ",l_pdb, "<br/>",
+                 "<b> IMGT numbering (L): </b>", as.character(point$lid), "<br/>",
+                 "<b> C-alpha's distance (Å): </b>", point$value, "<br/>")))
+        )
+        
+        
+      )
+      
+    })
+    
+    # Get the strings indicating the PDB positions of brushed residues
+    brush <- input$matrix_brush
+    
+    
+    
+    if (is.null(brush)){
+      brushed_all_residues$all <- NULL
+      
+      brushed_int_residues$h <- NULL
+      brushed_int_residues$l <- NULL
+    }
+    else{
+      this_hnum <- read.csv(paste0(res_info_dir,iden_code,"_H_res_info.csv"))
+      this_lnum <- read.csv(paste0(res_info_dir,iden_code,"_L_res_info.csv"))
+      this_hnum[,"IMGT_numbering_summary"] <-paste0(this_hnum$imgt_numbering,"(",this_hnum$VorC,")")
+      this_lnum[,"IMGT_numbering_summary"] <-paste0(this_lnum$imgt_numbering,"(",this_lnum$VorC,")")
+      names(this_hnum) <- paste0(names(this_hnum),"_H")
+      names(this_lnum) <- paste0(names(this_lnum),"_L")
+      
+      this_total_num <- tidyr::crossing(this_hnum,this_lnum)
+      total_residues_info$df<- this_total_num
+      
+      b_point <- brushedPoints(plotData,brush, xvar="hid",yvar="lid")
+      
+      brushed_residues_df <- merge(x=total_residues_info$df,y=b_point,
+                                by.x=c("IMGT_numbering_summary_H","IMGT_numbering_summary_L"),
+                                by.y=c("hid","lid")
+                                )
+      names(brushed_residues_df)[names(brushed_residues_df)=="pdb_numbering_H"]<-"hpdb"
+      names(brushed_residues_df)[names(brushed_residues_df)=="pdb_numbering_L"]<-"lpdb"
+      
+      
+      
+      brushed_residues_df=brushed_residues_df[!(brushed_residues_df$hpdb=="NULL" | brushed_residues_df$lpdb=="NULL"),]
+      rownames(brushed_residues_df)<-NULL
+      
+      hlid=strsplit(iden_code,"_")[[1]][2]
+      hchain=substr(hlid,1,1)
+      lchain=substr(hlid,2,2)
+      
+      brushed_interface_residue=brushed_residues_df[brushed_residues_df$if_both_interface==1,]
+      
+      #brushed_df$df <-b_point
+      #brushed_df$df <-this_total_num
+      #brushed_df$df <-this_total_num
+      #output$brushed_table <- DT::renderDataTable({
+      #  DT::datatable(brushed_df$df)
+        #DT::datatable(ab_info$ab_info_df,selection="single",escape=F,options=list(scrollX=TRUE)) # for test
+      #})
+      
+      
+      h_position_str_vec <- paste0 (brushed_residues_df$hpdb, ":", hchain)
+      h_p_str <- paste(h_position_str_vec,collapse=' or ')
+      h_p_str <- ifelse(substr(h_p_str,1,1)==":",NULL,h_p_str)
+      
+      l_position_str_vec <- paste0 (brushed_residues_df$lpdb, ":", lchain)
+      l_p_str <- paste(l_position_str_vec,collapse=' or ')
+      l_p_str <- ifelse(substr(l_p_str,1,1)==":",NULL,l_p_str)
+      
+      total_str <-paste(c(h_p_str,l_p_str),collapse=' or ')
+      
+      h_int_position_str_vec <- paste0 (brushed_interface_residue$hpdb, ":", hchain)
+      h_int_p_str <- paste(h_int_position_str_vec,collapse=' or ')
+      
+      l_int_position_str_vec <- paste0 (brushed_interface_residue$lpdb, ":", lchain)
+      l_int_p_str <- paste(l_int_position_str_vec,collapse=' or ')
+      
+      brushed_all_residues$all <- total_str
+      
+      brushed_int_residues$h <- if (substr(h_int_p_str,1,1)==":") NULL else h_int_p_str
+      brushed_int_residues$l <- if (substr(l_int_p_str,1,1)==":") NULL else l_int_p_str
+      
+  
+    }
+    output$download_matrix <- downloadHandler(
+      filename=function(){
+        paste0(iden_code,"_Fab_contact_map_info",".zip")
+      },
+      content=function(f_name){
+        
+        temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+        dir.create(temp_directory)
+        
+        plot_df <- int_matrix_plot0$data
+        plot_df_name <- paste0(iden_code,"_matrix_with_residue_info.csv")
+        write.csv(plot_df,file.path(temp_directory,plot_df_name))
+        
+        matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+        matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+        file.copy(matrix_f_name,matrix_f_name_new)
+        if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+          file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+          file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+        }
+        
+        
+        ggsave(paste0(temp_directory,"/",iden_code,"_contact_map_plot.png"), plot = int_matrix_plot0, device = "png")
+        
+        zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+      },
+      contentType="application/zip"
+    )
+    
+  })
+  
+  ###### TABPANEL: Show the result of pmut_scan ######
+  mut_plt_ab <- reactiveVal() # To record the iden_code of the current mut_scan plot
+  ## Get the num_info for the pmut_scan tab
+  num_df_for_mut <- reactive({
+    iden_code <-struc_selected()
+    hlnum <- extracting_num_df(iden_code,res_info_dir)
+    chain_num_df=if (input$pmut_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum 
+    num_df <-generating_vc_num_info(chain_num_df)
+    num_df 
+  })
+  
+  ## Rosetta_pmut panel:
+  pmut_num_df<- reactive({
+    iden_code <-struc_selected()
+    
+    
+    num_df <- num_df_for_mut()
+    
+    pmut_fn_horl <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    pmut_fn=paste0(pmut_dir,"/",pmut_fn_horl,"_result/",iden_code,"_pmut.csv")
+    if (file.exists(pmut_fn)){
+      pmut_df=read.csv(pmut_fn)
+      
+      colnames(pmut_df)[colnames(pmut_df)=="position"] <- "pdb_numbering"
+      pmut_num_df<- produce_mut_scan_df(num_df,pmut_df,"mean_ddG")
+      
+      mut_plt_ab(iden_code)
+      return (pmut_num_df)
+    }
+    else{
+      return (NULL)
+    }
+    
+    
+  })
+  
+  
+  observe({
+    #if (result_tabs_value()=="pmut_scan"){
+
+      pmut_num_df <- pmut_num_df()
+      selected_ab_in_ab_info <- struc_selected() #Get the current selected ab in the ab info panel
+      if (is.null(pmut_num_df)){
+        output$rosetta_pmut_scan_plt <- NULL
+        observeEvent(input$residue_list_panel,{
+          if (result_tabs_value()=="pmut_scan"){
+            js$disableTab("rosetta_mut")
+            showModal(modalDialog(title="Mutational scanning result", "Some mutational scanning results for this antibody is not available. Please browse for other information related to this antibody."))
+          }
+        })
+        
+      }
+      else if (is.null(mut_plt_ab()) || mut_plt_ab() !=struc_selected() ){
+        output$rosetta_pmut_scan_plt <- NULL
+      }
+      else{
+        rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+        
+        output$rosetta_pmut_scan_plt <- renderPlotly({
+          rosetta_pmut_scan_plt0
+        })
+        
+        # Make the rosetta_pmut_scan_plt downloadable for users
+        output$download_rpmut <- downloadHandler(
+          filename=function(){
+            iden_code <-struc_selected()
+            paste0(iden_code,"_rosetta_pmut_info",".zip")
+          },
+          content=function(f_name){
+            iden_code <-struc_selected()
+            
+            temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+            dir.create(temp_directory)
+            rpmut <- rosetta_pmut_scan_plt0
+            
+            plot_df <- apply(pmut_num_df,2,as.character)
+            
+            plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
+            write.csv(plot_df,file.path(temp_directory,plot_df_name))
+            
+            #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+            #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+            #file.copy(matrix_f_name,matrix_f_name_new)
+            #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+            #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+            #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+            #}
+            
+            # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
+            #if (!require("processx")) install.packages("processx")
+            #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
+            
+            zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+          },
+          contentType="application/zip"
+        )
+      }
+      
+    #}
+  
+    
+    
+  })
+  
+  
+  
+  
+  
+  
+  ## AntiBERTy pseudoLogLikelihood panel:
+  abty_num_df <- reactive({
+    iden_code <-struc_selected()
+    num_df <- num_df_for_mut()
+    
+    # Get the abty_pseudoLog_likelihood df
+    horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    abty_csv_fn=paste0(abty_scaled_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+    
+    if (file.exists(abty_csv_fn)){
+      #abty_csv_fn=paste0(abty_dir,iden_code,"_",horl_fn,"_likelihood_melt.csv")
+      abty_csv=read.csv(abty_csv_fn) 
+      
+      abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"scaled_pseudolog_likelihood")
+      #abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
+      abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
+      abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
+      mut_plt_ab(iden_code)
+      return (abty_num_df)
+    }
+    else{
+      return (NULL)
+    }
+    
+    
+  })
+  
+  observeEvent(input$residue_list_panel,{
+    if (is.null(abty_num_df())){
+      if (result_tabs_value()=="pmut_scan"){
+        js$disableTab("abty_mut")
+        js$disableTab("am_mut")
+        showModal(modalDialog(title="Mutational scanning result", "Some mutational scanning results for this antibody is not available. Please browse for other information related to this antibody."))
+      }
+    }
+    
+  })
+  
+  output$antiberty_plt <- renderPlotly({
+    abty_num_df <- abty_num_df()
+    if (is.null(abty_num_df)){
+      #showModal(modalDialog(title="Mutational scanning result", "The mutational scanning result for this antibody is not available. Please browse other information of this antibody."))
+      return (NULL)
+    }
+    else if (is.null(mut_plt_ab()) ){
+      return (NULL)
+    }
+    else{
+      draw_mut_scan_plot(abty_num_df,"scaled_pseudolog_likelihood",T)
+      #draw_mut_scan_plot(abty_num_df,"pseudolog_likelihood",T)
+    }
+  })
+  
+  
+  ## Track the user-selected residues on mut_scan_plots to zoom-in in NGLVieweR
+  mut_selected_residues <- reactiveVal()
+  observe({
+    mut_selected_df <- event_data("plotly_selected")
+    
+    if (is.null(mut_selected_df)){
+      mut_selected_residues(NULL)
+    }else{
+      # Get the string for the zoom-in in the NGLViewer
+      mut_selected_df <- mut_selected_df$customdata
+      mut_position_str_vec <- unique(paste0 (mut_selected_df$pdb_numbering, ":", mut_selected_df$chain))
+      mut_p_str <- paste(mut_position_str_vec,collapse=' or ')
+      
+      selected_data <- if (substr(mut_p_str,1,1)==":") NULL else mut_p_str
+      mut_selected_residues(selected_data)
+    }
+    
+  })
+  observeEvent(input$mut_scan_plots,{
+    mut_selected_residues(NULL)
+  })
+  
+  observeEvent(input$pmut_chain_tabs,{
+    mut_selected_residues(NULL)
+  })
+  
+  ## AlphaMissense pathogenecity panel:
+  
+  output$am_plt <- renderPlotly({
+    # Get the abty_pseudoLog_likelihood df
+    iden_code <-struc_selected()
+    # Get the numbering information
+    #hlnum <- extracting_num_df(iden_code,res_info_dir)
+    #chain_num_df=if (input$pmut_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum 
+    
+    horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+    
+    chaintype <- strsplit(vcab[vcab$iden_code==iden_code,"Htype"],"\\(")[[1]][1]
+    
+    almissense_fn <- paste0(almissense_dir,chaintype,"_am_with_numbering.csv")
+    
+    almissense_df <- read.csv(almissense_fn)
+    almissense_num_df <- clean_almissense_df(almissense_df)
+    banner_fig_am <- plot_ly(x=almissense_num_df$WT_aa_position,y=almissense_num_df$y,type="scatter",mode="markers",#orientation='h',
+                             marker = list(color=almissense_num_df$color,size=5,symbol="square"),
+                             showlegend = F,
+                             customdata=split(almissense_num_df[,c("region","imgt_numbering","VorC")],seq_len(nrow(almissense_num_df))),
+                             hovertemplate="<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>region</b>:%{customdata.VorC}-%{customdata.region}<extra></extra>"
+    ) %>%
+      layout(xaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,
+                        categoryorder = "trace"),
+             #height=80,
+             #yaxis=list(range=c(0.5,1.5))
+             yaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE)
+             ,dragmode=FALSE
+             ,annotations=list(
+               xref="x domain",
+               yref="y domain",
+               x=0.05,
+               y=1.55,
+               text=HTML("<b>Residue strip</b>"),
+               showarrow=FALSE
+             )
+             
+      ) %>%
+      config(displayModeBar = F)
+    #banner_fig_am
+    almissense_plot <- plot_ly(type="heatmap",x=almissense_df$WT_aa_position,y=almissense_df$mut_aa,z=almissense_df$am_pathogenicity,
+                               #almissense_plot <- plot_ly(type="heatmap",x=almissense_df$imgt_numbering,y=almissense_df$mut_aa,z=almissense_df$am_pathogenicity,
+                               customdata=split(almissense_df[,c("WT_aa","mut_aa","imgt_numbering","am_pathogenicity","am_class")],seq_len(nrow(almissense_df))),
+                               hovertemplate="<b>Residue</b>:%{customdata.WT_aa}\n<b>Mutation</b>:%{customdata.mut_aa}\n<b>IMGT numbering</b>:%{customdata.imgt_numbering}\n<b>am_pathogenicity</b>:\n%{customdata.am_pathogenicity}\n<b>predicted_pathogenicity</b>:\n%{customdata.am_class}\n<extra></extra>",
+                               colorscale="RdBu")%>%
+      layout(xaxis = list(
+        dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,
+        categoryorder = "trace"),
+        yaxis=list(autorange="reversed",
+                   categoryorder = "array",
+                   categoryarray = c("A", "V", "I", "L", "M", "F","Y","W",
+                                     "S", "T", "N", "Q", "C", "G", "P",
+                                     "R", "H", "K", "D", "E"))
+        ,dragmode=FALSE
+        ,legend=list(title="Pathogenicity score")
+      ) #%>%
+      #hide_colorbar() %>%
+      config(displayModeBar = F)
+    #almissense_plot
+    
+    combine_fig <- subplot(banner_fig_am,almissense_plot,nrows=2,shareX=TRUE,heights = c(0.08, 0.92))
+    combine_fig
+    
+  })
+  
+  
+  
+  
   
   ### THE PANEL of 3D Structural viewer ##################################################################################################
+  # Show the legend & download buttons after clicking the row in the table
+  observeEvent(input$ab_info_table_rows_selected, {
+    
+    output$viewer_legend <- renderUI({
+      tagList(
+        div(img(
+          src="./struc_viewer_legend.png",
+          width = 560#, height = 80
+        )),
+        checkboxInput(inputId = "if_full_view", label = "View all the chains with the same PDB ID"),
+        conditionalPanel(
+          condition="input.if_full_view==1",
+          checkboxGroupInput("full_view_option","Display options:",
+                             c("Color antigen chain in this pdb"="color_antigen",
+                               "Show other ligand(s) in this pdb"="show_ligand",
+                               "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"))
+        
+        ),
+        downloadButton("download_struc",label="Download the displayed structure (.pdb) file")#,
+      )
+    })
+    
+    output$interface_matrix_buttons<-renderUI({
+      tagList(
+        checkboxInput(inputId = "hide_non_interface",label="Hide non-interface residues",FALSE),
+        actionButton("clearBrush", "Clear brushed area"),
+        downloadButton("download_matrix",label="Download interface matrix")
+      )
+    })
+    
+  })
+  
   ###### TABPANEL:Draw the seq_pos figure ######
   output$seq_cov_plot<- renderPlot({
     pdb_c <- struc_selected()
     get_coverage_pos_plot (pdb_c,"Htype",total_dom_info,t_h_author_bl,t_h_coor_bl,df=vcab)
   })
+  
+  ###### TABPANEL:Show antibody numbering information ######
+  num_id <- reactive({
+    iden_code <-struc_selected()
+    pdb=strsplit(iden_code,"_")[[1]][1]
+    chain_index=ifelse(input$num_chain_tabs=="Heavy",1,2)
+    chain=substr(strsplit(iden_code,"_")[[1]][2],chain_index,chain_index)
+    
+    Id=paste0(pdb,"_",chain)
+    Id
+    
+  })
+  
+  
+  
+  num_df <- reactive({
+    iden_code <-struc_selected()
+    hlnum <- extracting_num_df(iden_code,res_info_dir)
+    chain_num_df=if (input$num_chain_tabs=="Heavy") hlnum$hnum else hlnum$lnum
+    
+    num_df <-generating_vc_num_info(chain_num_df)
+    
+  })
+  
+  
+  output$numbering_plot<- renderPlot({
+    num_df <- num_df()
+    num_plot <-get_numbering_plot(num_df)
+    num_plot
+    
+  })
+  
+  output$hover_info <- renderUI({
+    hover <- input$numbering_hover
+    num_df <- num_df()
+    
+    plotData <- num_df[,c("x","y","VorC","region","res_code","residue","imgt_numbering")]
+    plotData <- plotData[complete.cases(plotData),]
+    point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
+    if (nrow(point) == 0) return(NULL)
+    if (point$res_code=="-") return(NULL)
+    
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    
+    left_pct <- ifelse(left_pct>0.7,0.7,left_pct)
+    top_pct <- ifelse(top_pct<0.4,0.4,top_pct)
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    
+    
+    
+    # create style property fot tooltip
+    # background color is set so tooltip is a bit transparent
+    # z-index is set so we are sure are tooltip will be on top
+    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
+                    "left:", left_px+1, "px; top:", top_px+1, "px;")
+    
+    
+    
+    wellPanel(
+      style = style,
+      p(HTML(paste0("<b> V/C region: ", point[["VorC"]], "</b><br/>",
+                    "<b> Residue: </b>", point$residue, "<br/>",
+                    "<b> Numbering: </b>", point$imgt_numbering, "<br/>",
+                    "<b> Fragment: </b>", point$region, "<br/>")))
+    )
+  })
+  
+  output$download_num_seq<- downloadHandler(
+    filename=function(){
+      Id <- num_id()
+      paste0(Id,"_sequence_numbering_info",".zip")
+    },
+    content=function(f_name){
+      Id <- num_id()
+      num_df <- num_df()
+      
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      num_info=extract_seq_from_num_df(num_df,Id)
+      pure_num_df=num_info$num_df
+      pure_num_df_name <-paste0(Id,"_num_info.csv")
+      fasta_name <- paste0(Id,"_seq_with_gaps.fasta")
+      
+      write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
+      write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
+  )
+  
+  
+  
   
   ###### TABPANEL: Display the antibody structure ######
   # Get the directory of the pdb file:
@@ -1246,9 +3487,11 @@ server <- function(input,output,session){
   which_pdb_dir <- reactive({
     pdb_c <- struc_selected()
     pdbid <- strsplit(pdb_c,"_")[[1]][1]
+    if_full_view<-ifelse(is.null(input$if_full_view),0,input$if_full_view)
     
-    if (input$if_full_view==1){
-      return (paste0(f_pdb_dir,pdbid,".pdb"))
+    
+    if (if_full_view==1){
+      return (paste0(f_pdb_dir,pdbid,".cif"))
     }
     else{
       return (paste(pdb_parent_dir,pdb_c,".pdb",sep=''))
@@ -1260,7 +3503,7 @@ server <- function(input,output,session){
     #pdb_dir_val$pdb <- pdbid
     pdb_dir_val$iden_code <- type_pdb_c
     
-    #pdb_dir_val$dir <- which_pdb_dir()
+    #pdb_dir_val$mess <- which_pdb_dir()
     pdb_dir_val$mess <- paste("The structure of",struc_selected(),"is shown below:")
   })
   
@@ -1330,22 +3573,22 @@ server <- function(input,output,session){
     #paste(select_residues_to_be_labeled(input$h_pops_rows_selected,pops_info$h_df)," or ",select_residues_to_be_labeled(input$l_pops_rows_selected,pops_info$l_df))
     
     # Include the selected disulfide bonds
-    sele_disulfide_row_idx <- as.numeric(input$disulfide_info_rows_selected)
-    disulfide_table<- disulfide$df
-    sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
-    disulfide_pos_vec=c()
-    for (pair in sele_disulfide){
-      residues=strsplit(pair,"-")[[1]]
-      for (r in residues){
-        remove_res_name=substring(r,4)
-        str1=gsub("\\(",":",remove_res_name)
-        res_num_chain=gsub("\\)","",str1)
-        disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
-      }
-    }
+    #sele_disulfide_row_idx <- as.numeric(input$disulfide_info_rows_selected)
+    #disulfide_table<- disulfide$df
+    #sele_disulfide <- disulfide_table[sele_disulfide_row_idx,"disulfide_bond"]
+    #disulfide_pos_vec=c()
+    #for (pair in sele_disulfide){
+    #  residues=strsplit(pair,"-")[[1]]
+    #  for (r in residues){
+    #    remove_res_name=substring(r,4)
+    #    str1=gsub("\\(",":",remove_res_name)
+    #    res_num_chain=gsub("\\)","",str1)
+    #    disulfide_pos_vec <- c(disulfide_pos_vec,res_num_chain)
+    #  }
+    #}
     
-    disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
-    total_pos_str <- paste0(position_str," or ",disulfide_pos_str)
+    #disulfide_pos_str <-paste(disulfide_pos_vec,collapse=' or ')
+    #total_pos_str <- paste0(position_str," or ",disulfide_pos_str)
     #return (total_pos_str)
     return (position_str)
   })
@@ -1399,8 +3642,8 @@ server <- function(input,output,session){
     }
     else{
       HL <- strsplit(pdb_c,"")[[1]]
-      antigen_chain_vec=strsplit(antigen_info," \\| ")[[1]]
-      antigen_chain_vec <- antigen_chain_vec[!antigen_chain_vec %in% HL] #The antigen annotation fetched from SAbDab is not always correct. In some cases, the H/L chain ID is in this column
+      antigen_chain_vec=strsplit(antigen_info,";")
+      #antigen_chain_vec <- antigen_chain_vec[!antigen_chain_vec %in% HL]
       str1=unlist(lapply(antigen_chain_vec,function(x){paste0(":",x)}))
       
       return (paste(str1,collapse=" or "))
@@ -1436,7 +3679,7 @@ server <- function(input,output,session){
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="red",sele=HC_color_select())) %>% #set the HC region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
-                                                  "element",colorValue="blue",sele=LC_color_select())) %>% #set the LC region blue
+                                                  "element",colorValue="royalblue",sele=LC_color_select())) %>% #set the LC region blue
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
                                                   "element",colorValue="salmon",sele=HV_color_select())) %>% #set the HV region red
       addRepresentation("cartoon", param = list(name = "cartoon", colorScheme =
@@ -1444,13 +3687,16 @@ server <- function(input,output,session){
       #addRepresentation("ball+stick", param = list(name = "ball+stick", colorScheme =
       #                                            "element",colorValue="cornflowerblue",sele="hetero")) %>% #show the heteroatoms
       # Conditional pipe:
-      
       `if`(h_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = h_res_select())),.) %>%
       `if`(l_res_select()!=":", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = l_res_select())),.) %>%
       `if`(disulfide_select()!="", addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "orange",sele = disulfide_select())),.) %>%
+      `if`(!(is.null(brushed_int_residues$h)), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = brushed_int_residues$h)),.) %>%
+      `if`(!(is.null(brushed_int_residues$l)), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = brushed_int_residues$l)),.) %>%
       
-      `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
-      `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "white",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(res_select()!=":", addRepresentation(.,"label",param = list(sele = res_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(disulfide_select()!="", addRepresentation(.,"label",param = list(sele = disulfide_select(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(!(is.null(brushed_int_residues$h)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$h,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      `if`(!(is.null(brushed_int_residues$l)), addRepresentation(.,"label",param = list(sele = brushed_int_residues$l,labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
       
       `if`(multi_condition("color_antigen" %in% full_view_option_value(),antigen_color_select()!=""),addRepresentation(., "cartoon", param = list(name = "cartoon", colorScheme ="element",colorValue="black",sele=antigen_color_select())),.) %>%
       `if`("show_ligand" %in% full_view_option_value(), addRepresentation(., "ball+stick", param = list(name = "ball+stick", colorScheme ="element",colorValue="cyan",sele="ligand")),.) %>%
@@ -1458,13 +3704,19 @@ server <- function(input,output,session){
       `if`("zoom_in_to_HL" %in% full_view_option_value(), zoomMove(.,center=HL_chain_selection(),zoom=HL_chain_selection()),.) %>%
       `if`(multi_condition(zoom_in_sele_res_val()==1,res_select()!=":"), zoomMove(.,center=res_select(),zoom=res_select()),.) %>%
       `if`(multi_condition(zoom_in_sele_disulfide_val()==1,disulfide_select()!=""), zoomMove(.,center=disulfide_select(),zoom=disulfide_select()),.) %>%
+      `if`(!(is.null(brushed_all_residues$all)), zoomMove(.,center=brushed_all_residues$all,zoom=brushed_all_residues$all),.) %>%
+      `if`(!(is.null(brushed_all_residues$all)), addRepresentation(., "cartoon", param = list(colorScheme = "element",colorValue = "grey",sele = paste("not(",brushed_all_residues$all,")"))),.) %>%
+      
+      `if`(!(is.null(mut_selected_residues())), zoomMove(.,center=mut_selected_residues(),zoom=mut_selected_residues()),.) %>%
+      `if`(multi_condition(!(is.null(mut_selected_residues())),input$pmut_chain_tabs=="Heavy"), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "yellow",sele = mut_selected_residues())),.) %>%
+      `if`(multi_condition(!(is.null(mut_selected_residues())),input$pmut_chain_tabs=="Light"), addRepresentation(., "ball+stick", param = list(colorScheme = "element",colorValue = "green",sele = mut_selected_residues())),.) %>%
+      `if`(!(is.null(mut_selected_residues())), addRepresentation(.,"label",param = list(sele = mut_selected_residues(),labelType = "format",labelFormat = "%(resname)s %(resno)s", labelGrouping = "residue",color = "black",fontFamiliy = "sans-serif",xOffset = 1,yOffset = 0,zOffset = 0,fixedSize = TRUE,radiusType = 1,radiusSize = 1.5,showBackground = FALSE)),.) %>%
+      #mut_selected_residues
       
       
       
       
-      
-      
-      stageParameters(backgroundColor = "grey") %>%
+      stageParameters(backgroundColor = "lightgray") %>%
       #setSize('20','20') %>%
       setQuality("high") %>%
       setFocus(0) 
@@ -1502,8 +3754,11 @@ server <- function(input,output,session){
   
   
   ### Initialize everything when new tabs are clicked ############################################################################################
+  
   # When different tabs are clicked, initialize everything in the other three panels
   initialize_everything <- function(){
+    
+    
     # The ab_info panel:
     ab_info$ab_info_df <- NULL
     ab_info$chain_type_message <- NULL
@@ -1516,6 +3771,9 @@ server <- function(input,output,session){
     #                  #multiple=TRUE,
     #                  selected="")
     
+    # The contact map panel:
+    session$resetBrush("matrix_brush")
+    
     # The popsComp panel:
     pops_info$mess <- NULL
     pops_info$h_df <- NULL
@@ -1523,11 +3781,17 @@ server <- function(input,output,session){
     
     disulfide$df <- NULL
     
+    # mut_scan panel
+    mut_plt_ab(NULL)
+    
     
     # The 3D structural viewer panel:
     pdb_dir_val$iden_code <- NULL
     #pdb_dir_val$dir <- ""
     pdb_dir_val$mess <- NULL
+    brushed_all_residues <- reactiveValues(all=NULL)
+    brushed_int_residues <- reactiveValues(h=NULL,y=NULL)
+    total_residues_info <- reactiveValues(df=NULL)
     updateCheckboxInput(session,"if_full_view",value=0)
     updateCheckboxInput(session,"zoom_in_sele_res",value=0)
     updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
@@ -1535,17 +3799,33 @@ server <- function(input,output,session){
                              c("Color antigen chain in this pdb"="color_antigen",
                                "Show other ligand(s) in this pdb"="show_ligand",
                                "Zoom in to the heavy-light chain pair of the selected VCAb entry"="zoom_in_to_HL"),selected=NULL)
+    
   }
   
   # When new tab is selected, initialize everything
   observeEvent(input$tabs,{
     initialize_everything()
+    # Make it automatically switch back to the "antibody information" panel, when the user is switching between the input query panels
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
+    
+    # Hide some ui under certain condition
+    if (tabs_value() != "Sequence"){
+      hide("ui_further_filter_results")
+    }
+    
+    
+    #mut_plt_ab(NULL) #The reactive value recording the iden_code of the current mut_scan plot, will control whether the scanning plot can show.
+    
     
   })
   
   # when new seq tab is selected, initialize everything
   observeEvent(input$seq_tabs,{
     initialize_everything()
+    # Make it automatically switch back to the "antibody information" panel, when the user is switching between the input query panels
+    updateTabsetPanel(session, "residue_list_panel",
+                      selected = "Antibody information")
     
   })
   
@@ -1555,6 +3835,35 @@ server <- function(input,output,session){
     updateCheckboxInput(session,"zoom_in_sele_disulfide",value=0)
     
   })
+  
+  # when query_string contains tab, jump to the tab
+  observe({
+    if (!(is.null(query_state$state))){
+      query <- getQueryString()
+      if (!(is.null(query[["tab"]]))){
+        updateTabsetPanel(session, "tabs",
+                          selected = query[["tab"]])
+      }
+      if (!(is.null(query[["format"]]))){
+        updateRadioButtons(session,"reper_format",selected=query[["format"]])
+      }
+    }
+  })
+  
+  ###### Reset the selected rows on data tables, reset the selected fragments on mut_scan, reset the mut_scan plots to null ######
+  observeEvent(input$ab_info_table_rows_selected,{
+    h_pops_proxy %>% selectRows(NULL) # H table in H-L interface tab
+    l_pops_proxy %>% selectRows(NULL) # L table in H-L interface tab
+    
+    disulfide_proxy %>% selectRows(NULL) # table in Disulfide Bond table
+    
+    mut_selected_residues(NULL)
+    
+    
+    
+  })
+  
+  
   
   
   ###### Statistics ############################################################################################
@@ -1566,26 +3875,53 @@ server <- function(input,output,session){
     vcab_copy=data.frame(vcab)
     vcab_copy$Htype_val=unlist(lapply(vcab_copy$Htype,function(x){strsplit(x,"\\(")[[1]][1]}))
     vcab_copy$Ltype_val=unlist(lapply(vcab_copy$Ltype,function(x){strsplit(x,"\\(")[[1]][1]}))
+    vcab_copy$Species=unlist(lapply(vcab_copy$Species,function(x){strsplit(x,":")[[1]][1]}))
     if (length(in_value)==1){
       ggplot(vcab_copy,aes_string(in_value))+
         geom_bar() +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1)
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1)
     }
     else if (length(in_value)==2){
       in_value <- sort(in_value)
+      if("Species" %in% in_value){
+        in_value[2]=ifelse(in_value[1]=="Species",in_value[2],in_value[1])
+        in_value[1]="Species"
+      }
       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
-        geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
+        geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1, position = position_dodge2(width = 0.8)) 
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8)) 
     }
     else if (length(in_value)==3){
       in_value <- sort(in_value)
       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
-        geom_bar(stat="count", position = position_dodge2(width = 0.5)) +
+        geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+        theme(
+          axis.text.x=element_text(angle = 90)
+        ) +
         scale_y_log10() +
-        facet_wrap(~ get(in_value[3])) + 
-        geom_text(stat="count",aes(label=..count..), vjust=-1, position = position_dodge2(width = 0.8))
+        facet_grid(~ get(in_value[3]), scales = "free", space = "free_x") + 
+        geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8))
+    }
+    else if (length(in_value)==4){
+       in_value <- sort(in_value)
+       ggplot(vcab_copy,aes_string(in_value[1], fill = in_value[2]))+
+         geom_bar(stat="count", position = position_dodge2(width = 0.5, preserve = "single")) +
+#         scale_alpha_manual(values=c(1, 0.5)) +
+         theme(
+           axis.text.x=element_text(angle = 90)
+         ) +
+         scale_y_log10() +
+         facet_grid(get(in_value[4]) ~ get(in_value[3]), scales = "free", space = "free_x") + 
+         geom_text(stat="count",aes(label=..count..), vjust=-0.1, position = position_dodge2(width = 0.8))
+         
     }
     
     
@@ -1599,13 +3935,52 @@ server <- function(input,output,session){
       write.csv(vcab_download,file)
     }
   )
-  all_unusual = all_unusual_cases
-  output$download_unusual <- downloadHandler(
-    filename = 'all_unusual_cases.csv', 
-    content = function(file){
-      write.csv(all_unusual, file)
-    }
+  output$download_all_num_seqs <- downloadHandler(
+    filename=function(){
+      o_time=Sys.time()
+      o1 <- gsub(" ","",o_time)
+      o2 <- gsub(":","",o1)
+      o3 <- gsub("-","",o2)
+      final_time <- o3
+      paste0("Sequences_numbering_info",final_time,".zip")
+    },
+    content=function(f_name){
+      
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      vh_num=read.csv(vh_num_dir, row.names = 1)
+      vl_num=read.csv(vl_num_dir, row.names = 1)
+      ch_num=read.csv(ch_num_dir)
+      cl_num=read.csv(cl_num_dir)
+      
+      vhnum=vh_num[unlist(lapply(vh_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vh_num) %in% c("X","hmm_species"))]
+      vlnum=vl_num[unlist(lapply(vl_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(vl_num) %in% c("X","hmm_species"))]
+      chnum=ch_num[unlist(lapply(ch_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(ch_num) %in% c("X","hmm_species"))]
+      clnum=cl_num[unlist(lapply(cl_num$Id,function(x){substr(x,1,4) %in% vcab$pdb})),!(names(cl_num) %in% c("X","hmm_species"))]
+      
+      rownames(vhnum) <- NULL
+      rownames(vlnum) <- NULL
+      rownames(chnum) <- NULL
+      rownames(clnum) <- NULL
+      
+      write.csv(vhnum,file.path(temp_directory,"vh_numbering_info.csv"))
+      write.csv(vlnum,file.path(temp_directory,"vl_numbering_info.csv"))
+      
+      write.csv(chnum,file.path(temp_directory,"ch_numbering_info.csv"))
+      write.csv(clnum,file.path(temp_directory,"cl_numbering_info.csv"))
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
   )
+  #all_unusual = all_unusual_cases
+  #output$download_unusual <- downloadHandler(
+  #  filename = 'all_unusual_cases.csv', 
+  #  content = function(file){
+  #    write.csv(all_unusual, file)
+  #  }
+  #)
   
 }
 
