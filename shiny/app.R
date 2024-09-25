@@ -26,6 +26,7 @@ abty_scaled_dir="../mut_scan/antiberty/"
 almissense_dir <- "../mut_scan/alphaMissense/"
 
 
+
 # Directories of blast db:
 # ref db:
 igh_bl <- "../seq_db/ref_db/ch_db/all_species_unique_CH_alleles.fasta"
@@ -68,8 +69,11 @@ cl_num_dir="../vcab_db/result/num_result/cnumbering_KL_C.csv"
 #### NOTE: this part should be changed on server #########
 # Things needed to number the user-inputted sequence
 imgt_num_py="imgt_numbering_vc.py" # This line doesn't need to be changed.
+
 use_python("/Users/dongjung/miniconda/bin/python")
 hmmerpath="/Applications/moe2020/bin-mac64"
+#use_python("/usr/bin/python3")
+#hmmerpath="/usr/bin"
 source_python(imgt_num_py) # This line doesn't need to be changed.
 ######--------------#########
 
@@ -115,8 +119,8 @@ check_usr_inputted_seq <- function(o_seq){
     title=ifelse(substr(str_seq_vec[1],1,1)==">",gsub(">","",str_seq_vec[1]),"test_seq")
     str_seq=ifelse(title=="test_seq",paste0(str_seq_vec,collapse=""),paste0(str_seq_vec[-1],collapse=""))
     #str_seq=str_seq
-    
-    if (grepl("b",tolower(str_seq)) || grepl("j",tolower(str_seq))|| grepl("o",tolower(str_seq))|| grepl("u",tolower(str_seq))|| grepl("x",tolower(str_seq))|| grepl("z",tolower(str_seq))){
+
+    if (grepl("b",tolower(str_seq)) | grepl("j",tolower(str_seq))| grepl("o",tolower(str_seq))| grepl("u",tolower(str_seq))| grepl("x",tolower(str_seq))| grepl("z",tolower(str_seq))){
       showModal(modalDialog(title="Sequence input error", "Please input a valid protein sequence"))
       return (list("seq"=NULL,"title"=NULL))
     }
@@ -134,26 +138,29 @@ generate_blast_result <- function(o_seq,db_dir,suffix="",check_seq=TRUE){
   } else{
     str_seq <- o_seq
   }
-  
+
   tryCatch(
       expr={
         withProgress(message="BLASTing...",value=0,{
           db <- blast(db=db_dir,type="blastp")
           aa_seq <- AAStringSet(str_seq) # Convert the string format into String Set
           seq_pred <- predict(db,aa_seq) # seq_pred is the dataframe containing all the blast results.
-          
+          if(nrow(seq_pred) == 0){
+            showModal(modalDialog(title="Sequence input error", "BLAST result is empty. Are you sure you input a valid sequence with appropriate length?"))
+	    return(NULL)
+	  }
           ## In web, the blast result is automatically ranked by "Bits", a measurement of how well query&subject seqs are aligned together.
           # Rank seq_pred
-          seq_pred <- seq_pred[order(seq_pred$Bits,decreasing=TRUE),]
+          seq_pred <- seq_pred[order(seq_pred$bitscore,decreasing=TRUE),]
           blast_df <- seq_pred[,2:12]
           rownames(blast_df) <- NULL
-          
+
           # generate the column of "iden_code"
           split_id <- function(i,sep){
             strsplit(i,sep)[[1]][1]
           }
-          colnames(blast_df) <- paste(colnames(blast_df),suffix,sep="")
-          blast_df$iden_code <- unlist(lapply(blast_df$SubjectID,split_id,"-"))
+          colnames(blast_df) <- paste(colnames(blast_df),suffix, sep="")
+          blast_df$iden_code <- unlist(lapply(blast_df$sseqid, split_id, "-"))
           return (blast_df)
         })
       },
@@ -191,7 +198,7 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region,check_seq=TRUE){
   t_df <- if (is.null(H_df)) L_df else if (is.null(L_df)) H_df else merge(H_df,L_df,by="iden_code",suffixes=c(".H",".L"))
   
   # Add the avg_ident to the merged table
-  t_df <- within(t_df,avg_ident <- if (is.null(H_df)) Perc.Ident.L else if (is.null(L_df)) Perc.Ident.H else (Perc.Ident.H+Perc.Ident.L)/2)
+  t_df <- within(t_df,avg_ident <- if (is.null(H_df)) pident.L else if (is.null(L_df)) pident.H else (pident.H + pident.L) / 2)
   t_df <- t_df[with(t_df,order(avg_ident,decreasing=TRUE)),] # sort the table based on avg_ident
   
   rownames(t_df) <- NULL # reset the row index of df 
@@ -205,10 +212,9 @@ blast_paired_chains <- function (ab_title,hseq,lseq,region,check_seq=TRUE){
     t_df$QueryID <- ab_title
     # Rearrange the columns of t_df and drop the column avg_ident
     # Note: using merge might break the row order defined by avg_ident
-    t_df <- t_df[,c("QueryID","iden_code",
-                    "SubjectID.H","Perc.Ident.H","Alignment.Length.H","Mismatches.H","Gap.Openings.H","Q.start.H","Q.end.H","S.start.H","S.end.H","E.H","Bits.H",
-                    "SubjectID.L","Perc.Ident.L","Alignment.Length.L","Mismatches.L","Gap.Openings.L","Q.start.L","Q.end.L","S.start.L","S.end.L","E.L","Bits.L")]
-    
+    t_df <- t_df[,c("qseqid","iden_code",
+                    "sseqid.H","pident.H","length.H","mismatch.H","gapopen.H","qstart.H","qend.H","sstart.H","send.H","evalue.H","bitscore.H",
+                    "sseqid.L","pident.L","length.L","mismatch.L","gapopen.L","qstart.L","qend.L","sstart.L","send.L","evalue.L","bitscore.L")] 
     return (t_df)
   }
   
@@ -264,7 +270,7 @@ uploaded_file_blast_unpaired <- function(f_path,region){
     best_match$QueryID <- ab_title
     result <- rbind(result,best_match)
   }
-  result <- result[,c("QueryID","SubjectID","iden_code","Perc.Ident","Alignment.Length","Mismatches","Gap.Openings","Q.start","Q.end","S.start","S.end","E","Bits")]
+  result <- result[,c("qseqid","sseqid","iden_code","pident","length","mismatch","gapopen","qstart","qend","sstart","send","evalue","bitscore")]
   return (result)
 }
 
@@ -893,11 +899,11 @@ plot_interface_mtrix <- function(iden_code,mtrix_dir,res_info_dir,if_alpha){
 vcab_number_usr_input_seq <- function(seq,region,hmmerpath){
   # region can only be "v_region" or "full_seq"
   if (is.null(seq)){
-    return (ggplot(NULL))
+    return (NULL)
   }
   num_df <- number_usr_input_seq (title, seq, region,hmmerpath)
   if (is.null(num_df)){
-    return (ggplot(NULL))
+    return (NULL)
   }
   num_df_for_plot <- generating_vc_num_info(num_df)
   get_numbering_plot(num_df_for_plot)
@@ -996,18 +1002,31 @@ par = shinyjs.getParams(par, def_par);
 Shiny.onInputChange("decoded_url",decodeURIComponent(par.txt))
 }'
 
-region_color_lst <- list(FR1="#6BAED6",CDR1="#C6DBEF",
-                         FR2="#6BAED6",CDR2="#C6DBEF",
-                         FR3="#6BAED6",CDR3="#C6DBEF",
-                         FR4="#6BAED6",
+region_color_lst <- list(FR1="#8A26CE",CDR1="#D9BAEE",
+                         FR2="#8A26CE",CDR2="#D9BAEE",
+                         FR3="#8A26CE",CDR3="#D9BAEE",
+                         FR4="#8A26CE",
                          #""="#EF6548",
-                         "strand A"="#EF6548",
-                         "strand B"="#EF6548","BC turn"="#FDD49E",
-                         "strand C"="#EF6548","CD turn"="#FDD49E",
-                         "strand D"="#EF6548","DE turn"="#FDD49E",
-                         "strand E"="#EF6548",
-                         "strand F"="#EF6548", "FG loop"="#FDD49E", 
-                         "strand G"="#EF6548")
+                         "strand A"="#257F35",
+                         "strand B"="#257F35","BC turn"="#97C8A0",
+                         "strand C"="#257F35","CD turn"="#97C8A0",
+                         "strand D"="#257F35","DE turn"="#97C8A0",
+                         "strand E"="#257F35",
+                         "strand F"="#257F35", "FG loop"="#97C8A0", 
+                         "strand G"="#257F35")
+
+#region_color_lst <- list(FR1="#6BAED6",CDR1="#C6DBEF",
+#                         FR2="#6BAED6",CDR2="#C6DBEF",
+#                         FR3="#6BAED6",CDR3="#C6DBEF",
+#                         FR4="#6BAED6",
+#                         #""="#EF6548",
+#                         "strand A"="#EF6548",
+#                         "strand B"="#EF6548","BC turn"="#FDD49E",
+#                         "strand C"="#EF6548","CD turn"="#FDD49E",
+#                         "strand D"="#EF6548","DE turn"="#FDD49E",
+#                         "strand E"="#EF6548",
+#                         "strand F"="#EF6548", "FG loop"="#FDD49E", 
+#                         "strand G"="#EF6548")
 
 produce_mut_scan_df <- function(num_df,mut_df,score_col){
   # This function combines the numbering infomation with the mut_scan table (rosetta or antiberty)
@@ -1023,7 +1042,7 @@ produce_mut_scan_df <- function(num_df,mut_df,score_col){
   
   #abty_num_df <- abty_num_df[abty_num_df$VorC=="V",]
   
-  mut_num_df$color <- lapply(mut_num_df$region,function(x){ifelse(x %in% names(region_color_lst), region_color_lst[[x]], "#EF6548") })
+  mut_num_df$color <- lapply(mut_num_df$region,function(x){ifelse(x %in% names(region_color_lst), region_color_lst[[x]], "#257F35") })
   mut_num_df$banner_y <- 1
   mut_num_df$normalized_score <- asinh(mut_num_df[[score_col]])
   #abty_num_df$normalized_p <- asinh(abty_num_df$pseudolog_likelihood)
@@ -1059,6 +1078,7 @@ draw_mut_scan_plot <- function(mut_num_df,score_val,reverseColor){
       dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE,categoryorder = "trace"
     ),
     yaxis=list(autorange="reversed",
+               title="",
                categoryorder = "array",
                categoryarray = c("A", "V", "I", "L", "M", "F","Y","W",
                                  "S", "T", "N", "Q", "C", "G", "P",
@@ -1067,7 +1087,9 @@ draw_mut_scan_plot <- function(mut_num_df,score_val,reverseColor){
     #,dragmode=FALSE
     
     ) %>%
-  hide_colorbar()
+    config(modeBarButtonsToRemove = c('zoom2d','pan2d','toImage') )
+  #%>%
+  #hide_colorbar()
   
   banner_fig <- base %>%
     add_markers(
@@ -1084,13 +1106,22 @@ draw_mut_scan_plot <- function(mut_num_df,score_val,reverseColor){
     ),
     #height=80,
     #yaxis=list(range=c(0.5,1.5))
-    yaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE)
+    yaxis=list(dtick = 1,title="Residue strip",showticklabels=FALSE,showline=F,visible=FALSE) #
     ,dragmode="select"
+    ,annotations=list(
+      xref="x domain",
+      yref="y domain",
+      x=-0.05,
+      y=1.05,
+      text=HTML("<b>Residue strip</b>"),
+      showarrow=FALSE
+    )
     )
   
-  combine_fig <- subplot(banner_fig, mut_plt, heights = c(.08, .92), nrows=2,shareX=TRUE) %>%
+  combine_fig <- subplot(banner_fig, mut_plt, heights = c(.08, .92), nrows=2,shareX=TRUE,titleY=FALSE) %>%
     layout(showlegend = FALSE) %>%
-    highlight(on = "plotly_selected", dynamic = FALSE,off='plotly_deselect') #%>%
+    highlight(on = "plotly_selected", dynamic = FALSE,off='plotly_deselect') 
+  #%>%
   #onRender("
   #    function(el,x){
   #      $('#clear').on('click', function(){Plotly.restyle(graphDiv, {selectedpoints: [null]});});
@@ -1108,7 +1139,7 @@ clean_almissense_df <- function (almissense_df){
   
   # Add color
   color_map <- data.frame("region"=unique(almissense_df$region))
-  color_map["color"] <- c("#EF6548", "#EF6548", "#EF6548", "#FDD49E", "#EF6548","#FDD49E", "#EF6548", "#FDD49E", "#EF6548", "#EF6548", "#FDD49E", "#EF6548")
+  color_map["color"] <- c("#257F35", "#257F35", "#257F35", "#97C8A0", "#257F35","#97C8A0", "#257F35", "#97C8A0", "#257F35", "#257F35", "#97C8A0", "#257F35")
   #color_map
   almissense_df$id <- 1:nrow(almissense_df)
   almissense_num_df=merge(almissense_df,color_map,by="region")
@@ -1542,20 +1573,23 @@ ui <- fluidPage(
                                                                              "Light chain" = "Light"
                                                                    )),
                                                       br(),
-                                                      HTML("<b>Note:</b> <em>You can select a region on the residue strip (by dragging a box on the strip) above the heatmap to zoom into the selected fragment in 3D viewer, double click to unselect</em>"),
+                                                      
                                                       #DT::dataTableOutput("pmut_num_table")#,
                                                       tabsetPanel(id="mut_scan_plots",
                                                                   tabPanel("Rosetta pmut",value="rosetta_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can select a region (<font color=\"#8A26CE\">Purple</font> for V region and <font color=\"#257F35\">Green</font> for C region) on the residue strip (by dragging a box on the strip) below to zoom into the selected fragment in 3D viewer, double click to unselect</em></div>"),
                                                                            plotlyOutput("rosetta_pmut_scan_plt"),
                                                                            downloadButton("download_rpmut",label="Download data for the plot")
                                                                            ),
                                                                   tabPanel("AntiBERTy pseudo-log likelihood",value="abty_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can select a region (<font color=\"#8A26CE\">Purple</font> for V region and <font color=\"#257F35\">Green</font> for C region) on the residue strip (by dragging a box on the strip) below to zoom into the selected fragment in 3D viewer, double click to unselect</em></div>"),
                                                                            plotlyOutput("antiberty_plt"),
-                                                                           downloadButton("download_abty_plt",label="Download plot and data")
+                                                                           downloadButton("download_abty_plt",label="Download data for the plot")
                                                                            ),
                                                                   tabPanel("AlphaMissense Pathogenicity",value="am_mut",
+                                                                           HTML("<div style=\"background-color: white;\"> <b>Note:</b> <em>You can hover on the residue strip to show the information related to each location.</em></div>"),
                                                                            plotlyOutput("am_plt"),
-                                                                           downloadButton("download_am_plt",label="Download plot and data")
+                                                                           downloadButton("download_am_plt",label="Download data for the plot")
                                                                            )
                                                                   ),
                                                       #DT::dataTableOutput("mut_selected_table")
@@ -1699,6 +1733,7 @@ server <- function(input,output,session){
   ## Assign different contents to the panel of ab_info_table when different tabs are selected in the input panel
   tabs_value <- reactive({input$tabs}) # the title of the tabs
   seq_sub_tab_value <- reactive({input$seq_tabs})
+  result_tabs_value <- reactive({input$residue_list_panel})
   ab_info <- reactiveValues() # The reactive value to hold the table of antibody information
   two_chains <- reactive({input$two_chains})
   pdbs <- vcab$pdb
@@ -1843,6 +1878,7 @@ server <- function(input,output,session){
     
     # Do the actual job
     if (tabs_value() == "PDB"){
+      
       inputted_pdb<- tolower(input$pdb_txt)
       if(inputted_pdb %in% pdbs){
         o_df <- vcab %>% dplyr::filter(pdb==inputted_pdb)
@@ -1914,11 +1950,13 @@ server <- function(input,output,session){
         seq1_seq <- seq1_info$seq
         seq1_title <- paste0(seq1_info$title,input$seq_type)
         o_num_plot_usr_seq_1 <- vcab_number_usr_input_seq(seq1_seq,input$sele_bl_db,hmmerpath)
-        
         usr_num_info_1$original <- o_num_plot_usr_seq_1
         usr_num_info_1$presented <- usr_num_info_1$original
         
         output$ui_num_plot_usr1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           tagList(
             p(HTML(paste0("<b>Numbering the user inputted sequence (IMGT scheme): </b><br/>",
                    "Hover on the residues to show the detailed numbering information <br/>",
@@ -1935,9 +1973,11 @@ server <- function(input,output,session){
           usr_num_info_1$presented
         })
         output$ui_num_info_seq1 <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           hover <- input$num_hover_seq1
           num_df <- usr_num_info_1$presented$data
-          
           plotData <- num_df[,c("x","y","VorC","region","res_code","imgt_numbering")]
           plotData <- plotData[complete.cases(plotData),]
           point <- nearPoints(plotData,hover, xvar="x",yvar="y",maxpoints = 1, threshold = 10,addDist = TRUE)
@@ -1960,7 +2000,7 @@ server <- function(input,output,session){
         ##### ------ #####
         
         ##### ADD USR_SELECTED C SEQUENCE TO THE V REGION, if the usr select "V region" for the "select the region of your interest" #####
-        if (input$sele_bl_db=="v_region"){
+        if (input$sele_bl_db=="v_region" && is.null(o_num_plot_usr_seq_1)==FALSE){
           output$ui_append_c_seq <- renderUI({
             tagList(
               p(HTML(paste0(
@@ -2025,6 +2065,9 @@ server <- function(input,output,session){
         ##### Make the numbered usr_seq available to download #######
         usr_seq2_info <- reactiveValues(seq2_info=NULL) # stores seq_info like title and sequences
         output$ui_download_num_usr_seq <- renderUI({
+          if (is.null(o_num_plot_usr_seq_1)){
+            return (NULL)
+          }
           tagList(
             br(),
             downloadButton("download_num_usr_seq",label="Download numbered sequence")#,
@@ -2033,7 +2076,6 @@ server <- function(input,output,session){
             #)))
           )
         })
-        
         output$download_num_usr_seq <- downloadHandler(
           filename=function(){
             title <- ifelse(is.null(usr_seq2_info$seq2_info$seq),paste0(seq1_info$title,"_",input$seq_type),
@@ -2045,7 +2087,7 @@ server <- function(input,output,session){
             num_df <- usr_num_info_1$presented$data
             
             temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
-            dir.create(temp_directory)
+	    dir.create(temp_directory)
             
             num_info=extract_seq_from_num_df(num_df,seq_name)
             pure_num_df=num_info$num_df
@@ -2054,7 +2096,6 @@ server <- function(input,output,session){
             
             write.csv(pure_num_df,file.path(temp_directory,pure_num_df_name))
             write.fasta(num_info$seqs,num_info$titles,file.path(temp_directory,fasta_name))
-            
             if (is.null(usr_seq2_info$seq2_info$seq)==FALSE){
               seq2_info <- usr_num_info_2$presented$seq2_info
               seq2_name <- paste0(seq2_info$title,"_",input$seq_type_2)
@@ -2120,6 +2161,9 @@ server <- function(input,output,session){
           usr_num_info_2$presented <- usr_num_info_2$original
           
           output$ui_num_plot_usr2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
             tagList(
               p(HTML(paste0(
                 "<b>",ifelse(input$seq_type_2=="Hseq","Heavy chain:","Light chain:"), "</b><br/>"
@@ -2134,6 +2178,9 @@ server <- function(input,output,session){
             usr_num_info_2$presented
           })
           output$ui_num_info_seq2 <- renderUI({
+            if (is.null(o_num_plot_usr_seq_2)){
+              return (NULL)
+            }
             hover <- input$num_hover_seq2
             num_df <- usr_num_info_2$presented$data
             
@@ -2169,16 +2216,17 @@ server <- function(input,output,session){
           blast_db_dir <- ifelse(input$sele_bl_db=="v_region", blast_v_db, blast_f_db)
           
           this_seq <- input$seq_txt
+	  
           # BLAST:
           blast_df <- generate_blast_result(this_seq,blast_db_dir) # return the dataframe of the complete result of the blast
-          
+
           if (is.null(blast_df)==FALSE){
             #VCAb_blast_df <- blast_df[1:10,] # Only show the top ten hits
             VCAb_blast_df <- blast_df
             
             # To observe if the user choose the correct chain type
             if(input$seq_type != "unknown_seq"){
-              top_blast_ident <- VCAb_blast_df[1,"Perc.Ident"]
+              top_blast_ident <- VCAb_blast_df[1,"pident"]
               if (top_blast_ident<50){
                 showModal(modalDialog(title="Are you sure you select the correct chain type?", "The Perc. Ident for the top hits are too low, 
                                       you might want to use the 'Don't know' option to further confirm the chain type of this sequence."))
@@ -2187,10 +2235,8 @@ server <- function(input,output,session){
             
             # Record the order of the blast result
             VCAb_blast_df$blast_order <- 1:nrow(VCAb_blast_df)
-            
             bl_ab_df <- generate_total_info(VCAb_blast_df,ns) # Get the total_info table containing both bl&ab info
-            
-            new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
+	    new_bl_ab_df <- bl_ab_df[order(bl_ab_df$blast_order),]
             rownames(new_bl_ab_df) <- NULL
             new_bl_ab_df <- new_bl_ab_df[!(names(new_bl_ab_df) %in% c("blast_order"))]
             
@@ -2851,7 +2897,6 @@ server <- function(input,output,session){
         
       }
       
-      # ADD SCRIPT HERE TO ENABLE THE APPERANCE OF PMUT_SCAN TAB
       
       js$enableTab("H-L_interface_residues")
       js$enableTab("Disulfide_Bond")
@@ -2861,8 +2906,10 @@ server <- function(input,output,session){
       js$enableTab("pmut_scan")
       
       
+      
     }
   })
+  
   
   
   ###### TABPANEL: Show Fab contact matrix ######
@@ -3036,7 +3083,7 @@ server <- function(input,output,session){
   })
   
   ###### TABPANEL: Show the result of pmut_scan ######
-  
+  mut_plt_ab <- reactiveVal() # To record the iden_code of the current mut_scan plot
   ## Get the num_info for the pmut_scan tab
   num_df_for_mut <- reactive({
     iden_code <-struc_selected()
@@ -3050,6 +3097,7 @@ server <- function(input,output,session){
   pmut_num_df<- reactive({
     iden_code <-struc_selected()
     
+    
     num_df <- num_df_for_mut()
     
     pmut_fn_horl <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
@@ -3059,6 +3107,8 @@ server <- function(input,output,session){
       
       colnames(pmut_df)[colnames(pmut_df)=="position"] <- "pdb_numbering"
       pmut_num_df<- produce_mut_scan_df(num_df,pmut_df,"mean_ddG")
+      
+      mut_plt_ab(iden_code)
       return (pmut_num_df)
     }
     else{
@@ -3068,57 +3118,73 @@ server <- function(input,output,session){
     
   })
   
+  
   observe({
-    pmut_num_df <- pmut_num_df()
-    if (is.null(pmut_num_df)){
-      output$rosetta_pmut_scan_plt <- NULL
-    }
-    else{
-      rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
-      
-      output$rosetta_pmut_scan_plt <- renderPlotly({
-        rosetta_pmut_scan_plt0
-      })
-      
-      # Make the rosetta_pmut_scan_plt downloadable for users
-      output$download_rpmut <- downloadHandler(
-        filename=function(){
-          iden_code <-struc_selected()
-          paste0(iden_code,"_rosetta_pmut_info",".zip")
-        },
-        content=function(f_name){
-          iden_code <-struc_selected()
-          
-          temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
-          dir.create(temp_directory)
-          rpmut <- rosetta_pmut_scan_plt0
-          
-          plot_df <- apply(pmut_num_df,2,as.character)
-          
-          plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
-          write.csv(plot_df,file.path(temp_directory,plot_df_name))
-          
-          #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
-          #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
-          #file.copy(matrix_f_name,matrix_f_name_new)
-          #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
-          #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
-          #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
-          #}
-          
-          # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
-          #if (!require("processx")) install.packages("processx")
-          #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-          #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-          #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
-          #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
-          
-          zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
-        },
-        contentType="application/zip"
-      )
-    }
+    #if (result_tabs_value()=="pmut_scan"){
 
+      pmut_num_df <- pmut_num_df()
+      selected_ab_in_ab_info <- struc_selected() #Get the current selected ab in the ab info panel
+      if (is.null(pmut_num_df)){
+        output$rosetta_pmut_scan_plt <- NULL
+        observeEvent(input$residue_list_panel,{
+          if (result_tabs_value()=="pmut_scan"){
+            js$disableTab("rosetta_mut")
+            showModal(modalDialog(title="Mutational scanning result", "Some mutational scanning results for this antibody is not available. Please browse for other information related to this antibody."))
+          }
+        })
+        
+      }
+      else if (is.null(mut_plt_ab()) || mut_plt_ab() !=struc_selected() ){
+        output$rosetta_pmut_scan_plt <- NULL
+      }
+      else{
+        rosetta_pmut_scan_plt0 <- draw_mut_scan_plot(pmut_num_df,"mean_ddG",F)
+        
+        output$rosetta_pmut_scan_plt <- renderPlotly({
+          rosetta_pmut_scan_plt0
+        })
+        
+        # Make the rosetta_pmut_scan_plt downloadable for users
+        output$download_rpmut <- downloadHandler(
+          filename=function(){
+            iden_code <-struc_selected()
+            paste0(iden_code,"_rosetta_pmut_info",".zip")
+          },
+          content=function(f_name){
+            iden_code <-struc_selected()
+            
+            temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+            dir.create(temp_directory)
+            rpmut <- rosetta_pmut_scan_plt0
+            
+            plot_df <- apply(pmut_num_df,2,as.character)
+            
+            plot_df_name <- paste0(iden_code,"_rosetta_pmut_info.csv")
+            write.csv(plot_df,file.path(temp_directory,plot_df_name))
+            
+            #matrix_f_name <-paste0(mtrix_dir,"/",iden_code,".txt")
+            #matrix_f_name_new <-paste0(temp_directory,"/",iden_code,".txt")
+            #file.copy(matrix_f_name,matrix_f_name_new)
+            #if (file.exists(paste0(res_info_dir,iden_code,"_H_res_info.csv")) && file.exists(paste0(res_info_dir,iden_code,"_L_res_info.csv"))){
+            #  file.copy(paste0(res_info_dir,iden_code,"_H_res_info.csv"),paste0(temp_directory,"/",iden_code,"_H_res_info.csv"))
+            #  file.copy(paste0(res_info_dir,iden_code,"_L_res_info.csv"),paste0(temp_directory,"/",iden_code,"_L_res_info.csv"))
+            #}
+            
+            # Save the plotly plot: didn't manage, maybe ask the user to do the screenshot directly via the plotly interface
+            #if (!require("processx")) install.packages("processx")
+            #orca(rpmut, paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #plotly_IMAGE(rpmut, format = "png", out_file = paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #export(rpmut,file=paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"))
+            #ggsave(paste0(temp_directory,"/",iden_code,"_rosetta_pmut.png"), plot = rpmut, device = "png")
+            
+            zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+          },
+          contentType="application/zip"
+        )
+      }
+      
+    #}
+  
     
     
   })
@@ -3145,6 +3211,7 @@ server <- function(input,output,session){
       #abty_num_df <- produce_mut_scan_df(num_df,abty_csv,"pseudolog_likelihood")
       abty_num_df <- abty_num_df[abty_num_df$VorC=="V",] # only extract the V region
       abty_num_df$chain <- if (input$pmut_chain_tabs=="Heavy") substring(strsplit(iden_code,"_")[[1]][2],1,1) else substring(strsplit(iden_code,"_")[[1]][2],2,2)
+      mut_plt_ab(iden_code)
       return (abty_num_df)
     }
     else{
@@ -3154,9 +3221,24 @@ server <- function(input,output,session){
     
   })
   
+  observeEvent(input$residue_list_panel,{
+    if (is.null(abty_num_df())){
+      if (result_tabs_value()=="pmut_scan"){
+        js$disableTab("abty_mut")
+        js$disableTab("am_mut")
+        showModal(modalDialog(title="Mutational scanning result", "Some mutational scanning results for this antibody is not available. Please browse for other information related to this antibody."))
+      }
+    }
+    
+  })
+  
   output$antiberty_plt <- renderPlotly({
     abty_num_df <- abty_num_df()
     if (is.null(abty_num_df)){
+      #showModal(modalDialog(title="Mutational scanning result", "The mutational scanning result for this antibody is not available. Please browse other information of this antibody."))
+      return (NULL)
+    }
+    else if (is.null(mut_plt_ab()) ){
       return (NULL)
     }
     else{
@@ -3169,6 +3251,7 @@ server <- function(input,output,session){
   ## Track the user-selected residues on mut_scan_plots to zoom-in in NGLVieweR
   mut_selected_residues <- reactiveVal()
   observe({
+    
     mut_selected_df <- event_data("plotly_selected")
     
     if (is.null(mut_selected_df)){
@@ -3181,9 +3264,39 @@ server <- function(input,output,session){
       
       selected_data <- if (substr(mut_p_str,1,1)==":") NULL else mut_p_str
       mut_selected_residues(selected_data)
+      
+      
+      
     }
     
   })
+  
+    
+    
+    # Make the abty_mut_scan_plt downloadable for users
+    output$download_abty_plt <- downloadHandler(
+      filename=function(){
+        iden_code <-struc_selected()
+        paste0(iden_code,"_abty_mut_info",".zip")
+      },
+      content=function(f_name){
+        iden_code <-struc_selected()
+        abty_num_df <- abty_num_df()
+        
+        temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+        dir.create(temp_directory)
+        
+        plot_df <- apply(abty_num_df,2,as.character)
+        
+        plot_df_name <- paste0(iden_code,"_abty_mut_info.csv")
+        write.csv(plot_df,file.path(temp_directory,plot_df_name))
+        
+        zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+      },
+      contentType="application/zip"
+    )
+    
+  
   observeEvent(input$mut_scan_plots,{
     mut_selected_residues(NULL)
   })
@@ -3209,7 +3322,6 @@ server <- function(input,output,session){
     
     almissense_df <- read.csv(almissense_fn)
     almissense_num_df <- clean_almissense_df(almissense_df)
-    
     banner_fig_am <- plot_ly(x=almissense_num_df$WT_aa_position,y=almissense_num_df$y,type="scatter",mode="markers",#orientation='h',
                              marker = list(color=almissense_num_df$color,size=5,symbol="square"),
                              showlegend = F,
@@ -3222,6 +3334,15 @@ server <- function(input,output,session){
              #yaxis=list(range=c(0.5,1.5))
              yaxis=list(dtick = 1,showticklabels=FALSE,showline=F,visible=FALSE)
              ,dragmode=FALSE
+             ,annotations=list(
+               xref="x domain",
+               yref="y domain",
+               x=-0.05,
+               y=1.05,
+               text=HTML("<b>Residue strip</b>"),
+               showarrow=FALSE
+             )
+             
       ) %>%
       config(displayModeBar = F)
     #banner_fig_am
@@ -3239,9 +3360,8 @@ server <- function(input,output,session){
                                      "S", "T", "N", "Q", "C", "G", "P",
                                      "R", "H", "K", "D", "E"))
         ,dragmode=FALSE
-        
-      ) %>%
-      hide_colorbar() %>%
+        ,legend=list(title="Pathogenicity score")
+      ) %>% #hide_colorbar() %>%
       config(displayModeBar = F)
     #almissense_plot
     
@@ -3249,6 +3369,37 @@ server <- function(input,output,session){
     combine_fig
     
   })
+  
+  
+  # Make the abty_mut_scan_plt downloadable for users
+  output$download_am_plt <- downloadHandler(
+    filename=function(){
+      iden_code <-struc_selected()
+      paste0(iden_code,"_alphamissense_mut_info",".zip")
+    },
+    content=function(f_name){
+      iden_code <-struc_selected()
+      
+      horl_fn <- if (input$pmut_chain_tabs=="Heavy") "h" else "l"
+      
+      chaintype <- strsplit(vcab[vcab$iden_code==iden_code,"Htype"],"\\(")[[1]][1]
+      
+      almissense_fn <- paste0(almissense_dir,chaintype,"_am_with_numbering.csv")
+      
+      almissense_df <- read.csv(almissense_fn)
+      
+      temp_directory <- file.path(tempdir(), as.integer(Sys.time()))
+      dir.create(temp_directory)
+      
+      plot_df <- apply(almissense_df,2,as.character)
+      
+      plot_df_name <- paste0(iden_code,"_am_mut_info.csv")
+      write.csv(plot_df,file.path(temp_directory,plot_df_name))
+      
+      zip::zip(zipfile=f_name,files=dir(temp_directory),root=temp_directory)
+    },
+    contentType="application/zip"
+  )
   
   
   
@@ -3670,6 +3821,8 @@ server <- function(input,output,session){
   
   # When different tabs are clicked, initialize everything in the other three panels
   initialize_everything <- function(){
+    
+    
     # The ab_info panel:
     ab_info$ab_info_df <- NULL
     ab_info$chain_type_message <- NULL
@@ -3691,6 +3844,9 @@ server <- function(input,output,session){
     pops_info$l_df <- NULL
     
     disulfide$df <- NULL
+    
+    # mut_scan panel
+    mut_plt_ab(NULL)
     
     
     # The 3D structural viewer panel:
@@ -3716,6 +3872,15 @@ server <- function(input,output,session){
     # Make it automatically switch back to the "antibody information" panel, when the user is switching between the input query panels
     updateTabsetPanel(session, "residue_list_panel",
                       selected = "Antibody information")
+    
+    # Hide some ui under certain condition
+    if (tabs_value() != "Sequence"){
+      hide("ui_further_filter_results")
+    }
+    
+    
+    #mut_plt_ab(NULL) #The reactive value recording the iden_code of the current mut_scan plot, will control whether the scanning plot can show.
+    
     
   })
   
@@ -3748,6 +3913,20 @@ server <- function(input,output,session){
       }
     }
   })
+  
+  ###### Reset the selected rows on data tables, reset the selected fragments on mut_scan, reset the mut_scan plots to null ######
+  observeEvent(input$ab_info_table_rows_selected,{
+    h_pops_proxy %>% selectRows(NULL) # H table in H-L interface tab
+    l_pops_proxy %>% selectRows(NULL) # L table in H-L interface tab
+    
+    disulfide_proxy %>% selectRows(NULL) # table in Disulfide Bond table
+    
+    mut_selected_residues(NULL)
+    
+    
+    
+  })
+  
   
   
   
